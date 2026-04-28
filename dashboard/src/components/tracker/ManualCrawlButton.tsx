@@ -52,11 +52,17 @@ export function ManualCrawlButton() {
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5"
+          className="gap-2"
           aria-label="수동 크롤링 트리거 (단축키 g+t)"
         >
           <RefreshCw className="size-3.5" aria-hidden />
           <span>수동 크롤링</span>
+          <kbd
+            className="font-mono ml-0.5 rounded-[3px] px-1.5 py-px text-[10px] font-normal"
+            style={{ background: 'var(--bg-sunk)', color: 'var(--fg-3)' }}
+          >
+            g+t
+          </kbd>
         </Button>
       </DialogTrigger>
       <DialogContent>
