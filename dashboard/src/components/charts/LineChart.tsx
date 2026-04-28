@@ -7,6 +7,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { chartTooltipProps } from './tooltip';
 
 interface LineChartProps {
   data: Array<{ name: string; value: number }>;
@@ -29,7 +30,7 @@ export function LineChart({
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} />
         <YAxis allowDecimals={false} stroke="var(--muted-foreground)" fontSize={12} />
-        <Tooltip />
+        <Tooltip {...chartTooltipProps} />
         <Line
           type="monotone"
           dataKey="value"

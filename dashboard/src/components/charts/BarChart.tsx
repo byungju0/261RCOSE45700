@@ -8,6 +8,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { chartTooltipProps } from './tooltip';
+
+const truncateLabel = (name: string) =>
+  name.length > 18 ? name.slice(0, 17) + '…' : name;
 
 interface BarChartProps {
   data: Array<{ name: string; value: number }>;
@@ -50,21 +54,9 @@ export function BarChart({
           width={140}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(name: string) =>
-            name.length > 18 ? name.slice(0, 17) + '…' : name
-          }
+          tickFormatter={truncateLabel}
         />
-        <Tooltip
-          cursor={{ fill: 'var(--muted)' }}
-          contentStyle={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            color: 'var(--foreground)',
-            fontSize: 12,
-          }}
-          labelStyle={{ color: 'var(--foreground)' }}
-        />
+        <Tooltip {...chartTooltipProps} />
         <Bar
           dataKey="value"
           fill={color}

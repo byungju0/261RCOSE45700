@@ -1,3 +1,5 @@
+import { KNOWN_SOURCES } from '@/lib/sources';
+
 /**
  * 오른쪽 레일 — Activity / Source health / Pipeline.
  * MVP는 정적 mock 값. 백엔드 API 붙으면 실데이터 swap.
@@ -25,7 +27,7 @@ export function RightRail() {
       {/* 2. Source health */}
       <RailSection title="Source health">
         <div className="flex flex-col">
-          {SOURCES.map((src) => (
+          {KNOWN_SOURCES.map((src) => (
             <HealthRow key={src} name={src} />
           ))}
         </div>
@@ -43,8 +45,6 @@ export function RightRail() {
     </aside>
   );
 }
-
-const SOURCES = ['tailstar.net', 'ptt.cc', 'dcard.tw', 'tieba.baidu.com', '52pojie.cn', 'bbs.nga.cn'];
 
 function RailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (

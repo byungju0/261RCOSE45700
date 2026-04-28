@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { PieChart } from '@/components/charts/PieChart';
@@ -9,6 +10,7 @@ import { RecentAlertList } from '@/components/tracker/RecentAlertList';
 import { useStatsQuery } from '@/api/stats';
 import { getTypeLabel } from '@/components/tracker/labels';
 import { colorForType } from '@/components/charts/colors';
+import { PageContainer } from '@/layouts/PageContainer';
 
 const REVIEWED_FRACTION = 0.25; // mock — 백엔드 붙으면 stats에서 받음
 const NEXT_CRAWL_LABEL = '42분 후';
@@ -18,6 +20,28 @@ export function DashboardPage() {
   const { data, isLoading, error } = useStatsQuery();
 
   if (error) throw error;
+
+  const typeData = useMemo(
+    () =>
+      data?.typeDistribution.map((entry) => ({
+        name: getTypeLabel(entry.type),
+        value: entry.count,
+      })) ?? [],
+    [data?.typeDistribution],
+  );
+  const typeColors = useMemo(
+    () => data?.typeDistribution.map((entry) => colorForType(entry.type)) ?? [],
+    [data?.typeDistribution],
+  );
+  const siteData = useMemo(
+    () =>
+      data?.siteDistribution.map((entry) => ({
+        name: entry.site,
+        value: entry.count,
+      })) ?? [],
+    [data?.siteDistribution],
+  );
+
   if (isLoading || !data) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-8">
@@ -38,10 +62,7 @@ export function DashboardPage() {
   });
 
   return (
-    <div
-      className="mx-auto flex max-w-[1300px] flex-col"
-      style={{ padding: 'var(--pad-page)' }}
-    >
+    <PageContainer>
       <div style={{ marginBottom: 'var(--pad-page-head)' }}>
         <h1
           className="m-0 mb-1 font-semibold"
@@ -83,38 +104,25 @@ export function DashboardPage() {
               <ChartCard
                 title="유형별 분포"
                 subtitle={`오늘 ${data.todayCount}건 기준`}
-                empty={data.typeDistribution.length === 0}
+                empty={typeData.length === 0}
                 emptyMessage="유형별 데이터 없음"
               >
-                <PieChart
-                  data={data.typeDistribution.map((entry) => ({
-                    name: getTypeLabel(entry.type),
-                    value: entry.count,
-                  }))}
-                  colors={data.typeDistribution.map((entry) =>
-                    colorForType(entry.type),
-                  )}
-                />
+                <PieChart data={typeData} colors={typeColors} />
               </ChartCard>
 
               <ChartCard
                 title="사이트별 분포"
                 subtitle={`오늘 ${data.todayCount}건 기준`}
-                empty={data.siteDistribution.length === 0}
+                empty={siteData.length === 0}
                 emptyMessage="사이트별 데이터 없음"
               >
-                <BarChart
-                  data={data.siteDistribution.map((entry) => ({
-                    name: entry.site,
-                    value: entry.count,
-                  }))}
-                />
+                <BarChart data={siteData} />
               </ChartCard>
             </div>
           </section>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -127,6 +135,9 @@ interface HeroProps {
 function Hero({ count, delta, reviewed }: HeroProps) {
   const reviewPct = count > 0 ? Math.round((reviewed / count) * 100) : 0;
   const deltaSign = delta > 0 ? '↑ +' : delta < 0 ? '↓ ' : '';
+  // mock — backend grouping 필드 합류 시 Detection 응답에서 받음
+  const dupCount = Math.floor(count * 0.3);
+  const uniqueCount = Math.max(0, count - dupCount);
 
   return (
     <section
@@ -239,12 +250,12 @@ function Hero({ count, delta, reviewed }: HeroProps) {
             title="유사 게시글 그룹화"
           >
             <span className="font-medium" style={{ color: 'var(--fg)' }}>
-              {Math.max(0, count - Math.floor(count * 0.3))}
+              {uniqueCount}
             </span>
             <span>unique</span>
             <span style={{ color: 'var(--fg-3)' }}>·</span>
             <span className="font-medium" style={{ color: 'var(--fg)' }}>
-              {Math.floor(count * 0.3)}
+              {dupCount}
             </span>
             <span>중복</span>
           </span>

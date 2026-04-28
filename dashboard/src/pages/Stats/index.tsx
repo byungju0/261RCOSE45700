@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStatsQuery } from '@/api/stats';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart } from '@/components/charts/BarChart';
@@ -8,19 +8,53 @@ import { ChartCard } from '@/components/tracker/ChartCard';
 import { EmptyState } from '@/components/tracker/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { colorForType } from '@/components/charts/colors';
-import { getTypeLabel } from '@/components/tracker/labels';
+import { getLangLabel, getTypeLabel } from '@/components/tracker/labels';
+import { PageContainer } from '@/layouts/PageContainer';
 import type { StatsPeriod } from '@/types/api';
-
-const LANG_LABEL: Record<string, string> = {
-  ko: '한국어',
-  'zh-CN': '중국어 (간체)',
-  'zh-TW': '중국어 (번체)',
-};
 
 export function StatsPage() {
   const [period, setPeriod] = useState<StatsPeriod>('weekly');
   const { data, isLoading, error } = useStatsQuery(period);
   if (error) throw error;
+
+  // hooks는 early return 위에 — 데이터 없으면 빈 배열로 떨어지게.
+  const trendData = useMemo(
+    () =>
+      data?.trend?.map((entry) => ({
+        // 'YYYY-MM-DD' → 'M/D'
+        name: entry.date.slice(5).replace('-', '/'),
+        value: entry.count,
+      })) ?? [],
+    [data?.trend],
+  );
+  const typeData = useMemo(
+    () =>
+      data?.typeDistribution.map((entry) => ({
+        name: getTypeLabel(entry.type),
+        value: entry.count,
+      })) ?? [],
+    [data?.typeDistribution],
+  );
+  const typeColors = useMemo(
+    () => data?.typeDistribution.map((entry) => colorForType(entry.type)) ?? [],
+    [data?.typeDistribution],
+  );
+  const siteData = useMemo(
+    () =>
+      data?.siteDistribution.map((entry) => ({
+        name: entry.site,
+        value: entry.count,
+      })) ?? [],
+    [data?.siteDistribution],
+  );
+  const langData = useMemo(
+    () =>
+      data?.langDistribution.map((entry) => ({
+        name: getLangLabel(entry.lang),
+        value: entry.count,
+      })) ?? [],
+    [data?.langDistribution],
+  );
 
   if (isLoading || !data) {
     return (
@@ -30,20 +64,10 @@ export function StatsPage() {
     );
   }
 
-  const trendData =
-    data.trend?.map((entry) => ({
-      // 'YYYY-MM-DD' → 'M/D'
-      name: entry.date.slice(5).replace('-', '/'),
-      value: entry.count,
-    })) ?? [];
-
   const trendEmpty = trendData.length === 0;
 
   return (
-    <div
-      className="mx-auto flex w-full max-w-[1300px] flex-col gap-4"
-      style={{ padding: 'var(--pad-page)' }}
-    >
+    <PageContainer className="gap-4">
       <header className="flex items-baseline justify-between">
         <h1
           className="text-foreground font-semibold tracking-tight"
@@ -78,13 +102,7 @@ export function StatsPage() {
           empty={data.typeDistribution.length === 0}
           emptyMessage="유형별 데이터 없음"
         >
-          <PieChart
-            data={data.typeDistribution.map((entry) => ({
-              name: getTypeLabel(entry.type),
-              value: entry.count,
-            }))}
-            colors={data.typeDistribution.map((entry) => colorForType(entry.type))}
-          />
+          <PieChart data={typeData} colors={typeColors} />
         </ChartCard>
 
         <ChartCard
@@ -93,12 +111,7 @@ export function StatsPage() {
           empty={data.siteDistribution.length === 0}
           emptyMessage="사이트별 데이터 없음"
         >
-          <BarChart
-            data={data.siteDistribution.map((entry) => ({
-              name: entry.site,
-              value: entry.count,
-            }))}
-          />
+          <BarChart data={siteData} />
         </ChartCard>
 
         <ChartCard
@@ -107,12 +120,7 @@ export function StatsPage() {
           empty={data.langDistribution.length === 0}
           emptyMessage="언어별 데이터 없음"
         >
-          <PieChart
-            data={data.langDistribution.map((entry) => ({
-              name: LANG_LABEL[entry.lang] ?? entry.lang,
-              value: entry.count,
-            }))}
-          />
+          <PieChart data={langData} />
         </ChartCard>
 
         <div className="bg-card flex flex-col justify-center gap-2 rounded-lg border p-6 text-sm">
@@ -155,6 +163,6 @@ export function StatsPage() {
           message={`${period === 'weekly' ? '주간' : '월간'} 기간 동안의 탐지 데이터가 비어 있습니다.`}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

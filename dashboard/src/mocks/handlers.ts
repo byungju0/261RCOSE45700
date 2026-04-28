@@ -96,6 +96,13 @@ export const handlers = [
   // POST /crawl/trigger
   http.post(`${baseUrl}/crawl/trigger`, () => {
     lastTriggerAt = Date.now();
+    // 데모 환경: since=triggered 필터가 빈 결과로 안 보이게, 가장 최근 3건의
+    // detectedAt을 현재 시각으로 덮어씀. 실배포 백엔드에서는 신규 크롤 결과가
+    // 자연스럽게 detectedAt > lastTriggerAt 조건을 만족.
+    const now = new Date(lastTriggerAt).toISOString();
+    MOCK_DETECTIONS.slice(0, 3).forEach((d) => {
+      d.detectedAt = now;
+    });
     const response: CrawlTriggerResponse = {
       status: 'triggered',
       estimatedMinutes: 3,

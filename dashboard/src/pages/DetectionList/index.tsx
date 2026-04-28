@@ -20,24 +20,17 @@ import {
 } from '@/components/ui/table';
 import { DetectionRow } from '@/components/tracker/DetectionRow';
 import { EmptyState } from '@/components/tracker/EmptyState';
+import { LANG_OPTIONS, TYPE_OPTIONS } from '@/components/tracker/labels';
+import { PageContainer } from '@/layouts/PageContainer';
+import {
+  detectionFilterToParams,
+  isFilterActive,
+} from '@/lib/detectionFilter';
 import { useShortcut } from '@/lib/shortcuts';
+import { KNOWN_SOURCES } from '@/lib/sources';
 import type { DetectionFilter, DetectionType, Language } from '@/types/api';
 
 const PAGE_SIZE = 20;
-
-const TYPE_OPTIONS: { value: DetectionType; label: string }[] = [
-  { value: '매크로_판매', label: '매크로 판매' },
-  { value: '핵_배포', label: '핵 배포' },
-  { value: '계정_거래', label: '계정 거래' },
-  { value: '리세마라', label: '리세마라' },
-  { value: '기타', label: '기타' },
-];
-
-const LANG_OPTIONS: { value: Language; label: string }[] = [
-  { value: 'ko', label: '한국어' },
-  { value: 'zh-CN', label: '중국어 (간체)' },
-  { value: 'zh-TW', label: '중국어 (번체)' },
-];
 
 export function DetectionListPage() {
   const navigate = useNavigate();
@@ -61,8 +54,7 @@ export function DetectionListPage() {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const [visited, setVisited] = useState<Set<number>>(new Set());
 
-  // 필터 변경 시 focus 리셋. filter는 useMemo 결과라 ref equality로 충분.
-  // "previous state in render" 패턴 — useEffect+setState 대신.
+  // "previous state in render" — filter ref가 바뀌면 focus 리셋 (effect 회피).
   const [prevFilter, setPrevFilter] = useState(filter);
   if (prevFilter !== filter) {
     setPrevFilter(filter);
@@ -73,16 +65,13 @@ export function DetectionListPage() {
   const totalPages = data ? Math.ceil(data.totalElements / data.size) : 1;
 
   const updateFilter = (next: Partial<DetectionFilter>, resetPage = true) => {
-    const merged = { ...filter, ...next };
-    const params = new URLSearchParams();
-    if (merged.date) params.set('date', merged.date);
-    if (merged.site) params.set('site', merged.site);
-    if (merged.type) params.set('type', merged.type);
-    if (merged.lang) params.set('lang', merged.lang);
-    if (merged.since) params.set('since', merged.since);
-    const page = resetPage ? 0 : (merged.page ?? 0);
-    if (page > 0) params.set('page', String(page));
-    setSearchParams(params);
+    const merged: DetectionFilter = {
+      ...filter,
+      ...next,
+      page: resetPage ? 0 : (next.page ?? filter.page),
+      size: undefined,
+    };
+    setSearchParams(detectionFilterToParams(merged));
   };
 
   const resetFilters = () => {
@@ -110,18 +99,10 @@ export function DetectionListPage() {
     if (item) openDetail(item.id);
   });
 
-  const hasActiveFilter =
-    !!filter.date ||
-    !!filter.site ||
-    !!filter.type ||
-    !!filter.lang ||
-    !!filter.since;
+  const hasActiveFilter = isFilterActive(filter);
 
   return (
-    <div
-      className="mx-auto flex w-full max-w-[1300px] flex-col gap-4"
-      style={{ padding: 'var(--pad-page)' }}
-    >
+    <PageContainer className="gap-4">
       <header className="flex items-baseline justify-between">
         <h1
           className="text-foreground font-semibold tracking-tight"
@@ -213,7 +194,7 @@ export function DetectionListPage() {
           </p>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -227,7 +208,7 @@ interface FilterBarProps {
 const ALL_VALUE = '__all__';
 
 function FilterBar({ filter, onChange, onReset, active }: FilterBarProps) {
-  const sites = ['tailstar.net', 'ptt.cc', 'dcard.tw', 'tieba.baidu.com', '52pojie.cn', 'bbs.nga.cn'];
+  const sites = KNOWN_SOURCES;
 
   return (
     <div className="bg-card flex flex-wrap items-center gap-2 rounded-lg border p-3">

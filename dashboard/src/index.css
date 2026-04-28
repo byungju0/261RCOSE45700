@@ -81,6 +81,7 @@
   --lh-normal: 1.5;
   --lh-relaxed: 1.6;
   --lh-loose: 1.75;
+  --lh-reading: 1.7;
 
   --tracking-tighter: -0.025em;
   --tracking-tight: -0.015em;
@@ -276,6 +277,16 @@
   --size-h1: var(--text-2xl);
   --size-alert-type: var(--text-base-mono);
   --size-alert-snippet: var(--text-base-mono);
+}
+
+/* CJK 시스템 폰트 스택 — `lang` 속성 기반 자동 매칭 (BilingualPanel 등). */
+[lang="zh-CN"] {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB',
+    'Noto Sans SC', sans-serif;
+}
+[lang="zh-TW"] {
+  font-family: 'PingFang TC', 'Microsoft JhengHei', 'Hiragino Sans CNS',
+    'Noto Sans TC', sans-serif;
 }
 
 @layer base {

@@ -1,8 +1,6 @@
 import { ArrowLeft, Copy, ExternalLink } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
-import { ko } from 'date-fns/locale';
 
 import { useDetectionQuery } from '@/api/detections';
 import { Button } from '@/components/ui/button';
@@ -10,7 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { BilingualPanel } from '@/components/tracker/BilingualPanel';
 import { ConfidenceBadge } from '@/components/tracker/ConfidenceBadge';
 import { TypeIcon } from '@/components/tracker/TypeIcon';
+import { PageContainer } from '@/layouts/PageContainer';
 import { useShortcut } from '@/lib/shortcuts';
+import { formatRelativeTime } from '@/lib/time';
 
 export function DetectionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -35,34 +35,24 @@ export function DetectionDetailPage() {
     }
   };
 
-  // One-Key Action 단축키
   useShortcut('o', () => handleOpen());
   useShortcut('c', () => void handleCopy());
   useShortcut('Escape', () => navigate('/detections'));
 
   if (isLoading || !data) {
     return (
-      <div
-      className="mx-auto flex w-full max-w-[1300px] flex-col gap-4"
-      style={{ padding: 'var(--pad-page)' }}
-    >
+      <PageContainer className="gap-4">
         <Skeleton className="h-8 w-1/3" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
-  const detectedTime = formatDistanceToNow(new Date(data.detectedAt), {
-    addSuffix: true,
-    locale: ko,
-  });
+  const detectedTime = formatRelativeTime(data.detectedAt);
 
   return (
-    <div
-      className="mx-auto flex w-full max-w-[1300px] flex-col gap-4"
-      style={{ padding: 'var(--pad-page)' }}
-    >
+    <PageContainer className="gap-4">
       <div className="flex items-center justify-between">
         <Link
           to="/detections"
@@ -76,7 +66,6 @@ export function DetectionDetailPage() {
         </span>
       </div>
 
-      {/* Trust-Visible Confidence Header */}
       <section className="bg-card flex flex-col gap-3 rounded-lg border p-6">
         <header className="flex flex-wrap items-center gap-3">
           <ConfidenceBadge score={data.confidence} />
@@ -102,7 +91,6 @@ export function DetectionDetailPage() {
         translatedText={data.translatedText}
       />
 
-      {/* Action panel */}
       <section className="bg-card flex flex-col gap-3 rounded-lg border p-6">
         <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
           조치
@@ -132,6 +120,6 @@ export function DetectionDetailPage() {
           않으며, 최종 판단은 담당자가 수행합니다.
         </p>
       </section>
-    </div>
+    </PageContainer>
   );
 }

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
+import { POLLING_QUERY_OPTIONS } from './queryDefaults';
+import { detectionFilterToParams } from '@/lib/detectionFilter';
 import type {
   CrawlTriggerResponse,
   Detection,
@@ -9,23 +11,10 @@ import type {
 
 export const DETECTIONS_QUERY_KEY = 'detections' as const;
 
-function buildSearchParams(filter: DetectionFilter): URLSearchParams {
-  const params = new URLSearchParams();
-  if (filter.date) params.set('date', filter.date);
-  if (filter.site) params.set('site', filter.site);
-  if (filter.type) params.set('type', filter.type);
-  if (filter.lang) params.set('lang', filter.lang);
-  if (filter.since) params.set('since', filter.since);
-  if (filter.page !== undefined) params.set('page', String(filter.page));
-  if (filter.size !== undefined) params.set('size', String(filter.size));
-  return params;
-}
-
 async function fetchDetections(
   filter: DetectionFilter,
 ): Promise<DetectionListResponse> {
-  const params = buildSearchParams(filter);
-  const qs = params.toString();
+  const qs = detectionFilterToParams(filter).toString();
   const response = await apiClient.get<DetectionListResponse>(
     qs ? `/detections?${qs}` : '/detections',
   );
@@ -36,8 +25,7 @@ export function useDetectionsQuery(filter: DetectionFilter) {
   return useQuery({
     queryKey: [DETECTIONS_QUERY_KEY, 'list', filter],
     queryFn: () => fetchDetections(filter),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    ...POLLING_QUERY_OPTIONS,
     placeholderData: (prev) => prev,
   });
 }

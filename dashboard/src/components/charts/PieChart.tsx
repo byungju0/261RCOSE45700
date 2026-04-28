@@ -7,6 +7,7 @@ import {
   Tooltip,
 } from 'recharts';
 import { CHART_PALETTE_VARS } from './colors';
+import { chartTooltipProps } from './tooltip';
 
 interface PieChartProps {
   data: Array<{ name: string; value: number }>;
@@ -46,14 +47,7 @@ export function PieChart({
             <Cell key={entry.name} fill={colors[idx % colors.length]} />
           ))}
         </Pie>
-        <Tooltip
-          contentStyle={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            fontSize: 12,
-          }}
-        />
+        <Tooltip {...chartTooltipProps} />
         <Legend
           layout="vertical"
           verticalAlign="middle"
