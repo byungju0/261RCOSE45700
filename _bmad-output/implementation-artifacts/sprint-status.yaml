@@ -1,11 +1,50 @@
 # generated: 2026-04-27
-# last_updated: 2026-04-27
+# last_updated: 2026-04-28
 # Story 1-1 created: 2026-04-27 (status: backlog → ready-for-dev, epic-1: backlog → in-progress)
 # Story 1-1 dev started: 2026-04-27 (status: ready-for-dev → in-progress)
 # Story 1-1 dev completed: 2026-04-27 (status: in-progress → review)
 # Story 1-2 created: 2026-04-27 (status: backlog → ready-for-dev)
 # Story 1-2 dev completed: 2026-04-27 (status: in-progress → review)
 # Story 1-2 code review completed: 2026-04-27 (status: review → done)
+# Story 4-4 created: 2026-04-27 (status: backlog → ready-for-dev, epic-4: backlog → in-progress) — 프론트 우선 진행 결정에 따라 Epic 1 잔여(1.3~1.5) 보류 후 Epic 4 착수
+# Story 4-4 dev started: 2026-04-27 (status: ready-for-dev → in-progress)
+# Story 4-4 dev completed: 2026-04-27 (status: in-progress → review)
+# Story 4-4-1 derived: 2026-04-27 (UX Design Spec Step 11 Implementation Roadmap)
+# Story 4-4-1 dev started: 2026-04-27 — UX Spec Phase 1+2+3+5 (인프라만, 마이그레이션 X)
+# Story 4-4-1 dev completed: 2026-04-27 — Tailwind v4 + shadcn(radix-nova) + 디자인 토큰
+#   + Pretendard/JetBrains Mono + shadcn 컴포넌트 5종(button/card/badge/skeleton/sonner)
+#   + C3 FreshnessIndicator + RootLayout 통합 (인라인 스타일은 4.4.2에서 마이그레이션)
+# Story 4-4-2 derived: 2026-04-27 (UX Design Spec Step 11 Implementation Roadmap)
+# Story 4-4-2 dev started: 2026-04-27 — Dashboard C-Light 재구성 + 인라인 스타일 → Tailwind 마이그레이션
+# Story 4-4-2 dev completed: 2026-04-27 — Custom 5종(C1 ConfidenceBadge / C2 TypeIcon /
+#   C4 DashboardCTA / C5 EmptyState / C8 ChartCard) + Dashboard C-Light(요약 strip + 차트
+#   2-card grid + 큰 검은 CTA + Empty State 분기) + 공통 컴포넌트 Tailwind 마이그레이션
+#   (RootLayout / LoadingSpinner / ErrorBoundary) + placeholder 3개 + Recharts 색상
+#   CSS 변수 주입(--chart-1~5, --primary, --border, --muted-foreground)
+# Story 4-5 dev started: 2026-04-27 — Detection List + Detail (BilingualPanel 시그니처)
+# Story 4-5 dev completed: 2026-04-27 — types/MSW/api hooks 확장(detections list/detail/
+#   crawl trigger) + shadcn 6종 추가(table/dialog/select/tooltip/tabs/separator) +
+#   C6 DetectionRow + C7 BilingualPanel ⭐ + C9 ManualCrawlButton + C10 NewDetectionsBadge +
+#   C11 GlobalShortcutProvider(j/k/enter/o/c/esc/g+t/g+d/g+l/g+s) + DetectionListPage
+#   본구현(filter bar + pagination + keyboard nav) + DetectionDetailPage 본구현(F-pattern
+#   + Confidence Header + AI 근거 + BilingualPanel + Action panel) + RootLayout 시스템
+#   업그레이드(ManualCrawlButton + NewDetectionsBadge + Toaster + Separator)
+# Story 4-6 dev started: 2026-04-27 — Stats 화면
+# Story 4-6 dev completed: 2026-04-27 — LineChart 래퍼 + StatsPage 본구현(weekly/monthly
+#   Tabs 토글 + 추이 LineChart + 사이트별 BarChart + 유형별 PieChart + 언어별 PieChart +
+#   오늘 요약 카드 + Empty State filter-empty 분기) + useStatsQuery period 인자 + MSW
+#   /stats?period= 대응 + mock data 7일·30일 trend 생성
+# 정식 Story 파일 생략 — UX Design Specification이 spec 역할 수행
+#
+# Story 4-4 / 4-5 / 4-6 디자인 시스템 v10 overhaul: 2026-04-28
+#   디자인 시스템 v10(NC AI 브랜드 + WCAG AA 2-tier 토큰 + 라이트/다크 + N1 severity
+#   배지 + 3-column 레이아웃 + Hero 통합) overhaul 7개 커밋, Blind Hunter + Edge Case
+#   Hunter + Security review 3-layer 리뷰 통과 (24 patch 적용 / 6 defer / 0 보안 이슈),
+#   PR #9 생성. 4-4 / 4-5 / 4-6 status: review → done
+#
+# Notes:
+# - 5분 이내 반영 검증(NFR4) 테스트는 Story 5.1 백엔드 합류 후로 deferred
+# - Story 4.4 review 상태 유지 — 4.4.1+4.4.2가 그 위에 디자인 시스템 마이그레이션 누적
 # project: 20261R0136COSE45700
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +80,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-27
-last_updated: 2026-04-27
+last_updated: 2026-04-27  # Story 4-4 created
 project: 20261R0136COSE45700
 project_key: NOKEY
 tracking_system: file-system
@@ -78,13 +117,15 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: 탐지 결과 조회 및 통계 대시보드
-  epic-4: backlog
+  epic-4: in-progress
   4-1-spring-rest-api-기반-구조-및-탐지-목록-엔드포인트: backlog
   4-2-탐지-상세-조회-및-수동-크롤링-트리거-엔드포인트: backlog
   4-3-통계-엔드포인트-구현: backlog
-  4-4-react-대시보드-메인-화면-및-라우팅-구조: backlog
-  4-5-탐지-목록-상세-화면-및-파이프라인-반영-검증: backlog
-  4-6-통계-화면-구현: backlog
+  4-4-react-대시보드-메인-화면-및-라우팅-구조: done  # 디자인 시스템 v10 overhaul + Blind Hunter/Edge Case Hunter/Security 3-layer 리뷰 통과 + PR #9
+  4-4-1-tailwind-shadcn-디자인-시스템-도입: done  # UX Spec spec, lightweight
+  4-4-2-dashboard-c-light-재구성: done  # UX Spec spec, lightweight
+  4-5-탐지-목록-상세-화면-및-파이프라인-반영-검증: done  # UX Spec spec, lightweight; 5분 검증은 Story 5.1 후
+  4-6-통계-화면-구현: done  # UX Spec spec, lightweight
   epic-4-retrospective: optional
 
   # Epic 5: 시스템 운영, 모니터링 및 품질 관리

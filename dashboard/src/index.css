@@ -1,111 +1,319 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Tracker fonts:
+ * - Pretendard (한글 + 영문 sans) — index.html <link>로 로드
+ * - JetBrains Mono — @fontsource로 번들링
+ */
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+/* ═══════════════════════════════════════════════════════════
+ * Tracker 디자인 토큰 v10 (NC AI 브랜드 + WCAG AA)
+ * mockup: ux-direction-a-v3-with-rail.html 와 1:1 동기화
+ * ═══════════════════════════════════════════════════════════ */
+
+[data-theme="light"], :root {
+  /* Surface — 4단계 elevation */
+  --bg: oklch(0.97 0.003 280);
+  --bg-elev: oklch(1 0 0);
+  --bg-sunk: oklch(0.95 0.004 280);
+  --bg-overlay: oklch(0.93 0.005 280);
+  --bg-active: oklch(0.90 0.006 280);
+
+  /* Foreground 3 levels */
+  --fg: oklch(0.18 0.01 280);
+  --fg-2: oklch(0.42 0.006 280);
+  --fg-3: oklch(0.60 0.005 280);
+
+  /* Borders */
+  --border-1: oklch(0.92 0.003 280);
+  --border-2: oklch(0.86 0.005 280);
+  --hover: var(--bg-overlay);
+  --active: var(--bg-active);
+
+  /* Semantic UI tokens (텍스트용, 4.5:1+) */
+  --crit: oklch(0.52 0.21 25);
+  --warn: oklch(0.55 0.16 55);
+  --safe: oklch(0.48 0.15 165);
+  --info: oklch(0.50 0.08 215);
+
+  /* Solid 배경(칩/바)용 — Radix step-9 패턴, 흰 글씨 4.5:1+ */
+  --crit-bg: oklch(0.52 0.21 25);
+  --warn-bg: oklch(0.55 0.16 55);
+
+  /* Brand tokens — NC AI */
+  --brand-cyan: oklch(0.63 0.09 215);
+  --brand-cyan-deep: oklch(0.50 0.08 215);
+  --brand-green: oklch(0.72 0.16 165);
+  --brand-orange: oklch(0.70 0.16 55);
+  --brand-warm: oklch(0.94 0.01 75);
+
+  /* Categorical (chart) */
+  --c1: oklch(0.50 0.16 320);
+  --c2: var(--brand-cyan);
+  --c3: oklch(0.60 0.14 195);
+  --c4: var(--brand-green);
+  --c5: var(--brand-orange);
+  --c6: oklch(0.48 0.07 35);
+
+  /* Action — Primary CTA */
+  --accent: var(--brand-cyan-deep);
+  --accent-soft-bg: oklch(0.95 0.025 215);
+  --on-accent: oklch(1 0 0);
+
+  /* Type scale — Major Third 1.25 + fluid clamp */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base-mono: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.25rem, 1.4vw, 1.4375rem);
+  --text-2xl: clamp(1.375rem, 1.8vw, 1.75rem);
+  --text-3xl: clamp(1.625rem, 2.2vw, 2.125rem);
+  --text-display: clamp(3rem, 5.5vw, 5.5rem);
+
+  --lh-tight: 1.2;
+  --lh-snug: 1.35;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.6;
+  --lh-loose: 1.75;
+  --lh-reading: 1.7;
+
+  --tracking-tighter: -0.025em;
+  --tracking-tight: -0.015em;
+  --tracking-snug: -0.005em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.1em;
+
+  --r: 6px;
+  --r-sm: 4px;
+  --r-lg: 8px;
+
+  /* === shadcn compat 매핑 (기존 컴포넌트가 깨지지 않게) === */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--bg-elev);
+  --card-foreground: var(--fg);
+  --popover: var(--bg-elev);
+  --popover-foreground: var(--fg);
+  --primary: var(--fg);
+  --primary-foreground: var(--bg-elev);
+  --secondary: var(--bg-overlay);
+  --secondary-foreground: var(--fg);
+  --muted: var(--bg-sunk);
+  --muted-foreground: var(--fg-3);
+  --accent-foreground: var(--on-accent);
+  --destructive: var(--crit);
+  --border: var(--border-1);
+  --input: var(--border-1);
+  --ring: var(--accent);
+
+  --chart-1: var(--c1);
+  --chart-2: var(--c2);
+  --chart-3: var(--c3);
+  --chart-4: var(--c4);
+  --chart-5: var(--c5);
+
+  --confidence-high: var(--crit);
+  --confidence-medium: var(--warn);
+  --confidence-low: var(--fg-3);
+  --confidence-high-bg: var(--crit-bg);
+  --confidence-medium-bg: var(--warn-bg);
+
+  --success: var(--safe);
+  --warning: var(--warn);
+
+  --radius: 0.5rem;
+
+  --sidebar: var(--bg-sunk);
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--fg);
+  --sidebar-primary-foreground: var(--bg-elev);
+  --sidebar-accent: var(--bg-overlay);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--border-1);
+  --sidebar-ring: var(--accent);
+}
+
+[data-theme="dark"] {
+  --bg: oklch(0.14 0.006 280);
+  --bg-elev: oklch(0.19 0.006 280);
+  --bg-sunk: oklch(0.11 0.005 280);
+  --bg-overlay: oklch(0.23 0.008 280);
+  --bg-active: oklch(0.28 0.009 280);
+
+  --fg: oklch(0.95 0.005 280);
+  --fg-2: oklch(0.70 0.008 280);
+  --fg-3: oklch(0.50 0.008 280);
+
+  --border-1: oklch(0.24 0.006 280);
+  --border-2: oklch(0.32 0.008 280);
+
+  --crit: oklch(0.72 0.18 25);
+  --warn: oklch(0.80 0.13 55);
+  --safe: oklch(0.78 0.14 165);
+  --info: oklch(0.75 0.10 215);
+
+  /* Dark용 desaturated 변종 — 주변 chroma 0.006 수준에 조화 */
+  --crit-bg: oklch(0.55 0.13 25);
+  --warn-bg: oklch(0.56 0.10 55);
+
+  --brand-cyan: oklch(0.75 0.10 215);
+  --brand-cyan-deep: oklch(0.60 0.09 215);
+  --brand-green: oklch(0.78 0.14 165);
+  --brand-orange: oklch(0.80 0.13 55);
+  --brand-warm: oklch(0.35 0.01 75);
+
+  --c1: oklch(0.70 0.13 320);
+  --c2: var(--brand-cyan);
+  --c3: oklch(0.73 0.12 195);
+  --c4: var(--brand-green);
+  --c5: var(--brand-orange);
+  --c6: oklch(0.70 0.05 35);
+
+  --accent: var(--brand-cyan);
+  --accent-soft-bg: oklch(0.28 0.04 215);
+  --on-accent: oklch(0.14 0.006 280);
+}
+
+@theme inline {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-heading: var(--font-sans);
+
+  /* === shadcn 색상 — 기존 컴포넌트 호환 === */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-confidence-high: var(--confidence-high);
+  --color-confidence-medium: var(--confidence-medium);
+  --color-confidence-low: var(--confidence-low);
+  --color-confidence-high-bg: var(--confidence-high-bg);
+  --color-confidence-medium-bg: var(--confidence-medium-bg);
+
+  /* === Tracker 토큰 (v10 mockup) === */
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-bg-page: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-bg-sunk: var(--bg-sunk);
+  --color-bg-overlay: var(--bg-overlay);
+  --color-bg-active: var(--bg-active);
+  --color-border-1: var(--border-1);
+  --color-border-2: var(--border-2);
+  --color-crit: var(--crit);
+  --color-warn: var(--warn);
+  --color-safe: var(--safe);
+  --color-crit-bg: var(--crit-bg);
+  --color-warn-bg: var(--warn-bg);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-cyan-deep: var(--brand-cyan-deep);
+  --color-brand-green: var(--brand-green);
+  --color-brand-orange: var(--brand-orange);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* === Spacing/size 토큰 (Comfortable density 단일) — 컴포넌트가 참조 === */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --pad-hero: clamp(20px, 2vw, 32px);
+  --gap-hero: clamp(16px, 1.5vw, 24px);
+  --pad-hero-status: clamp(14px, 1.5vw, 20px);
+  --pad-section: clamp(28px, 3.5vw, 48px);
+  --pad-section-head: 16px;
+  --pad-page: clamp(24px, 3vw, 56px);
+  --pad-page-head: clamp(20px, 2.5vw, 36px);
+  --pad-card: clamp(16px, 1.5vw, 28px);
+  --pad-alert-row-y: 14px;
+  --pad-alert-row-x: clamp(16px, 1.5vw, 28px);
+  --pad-topbar-x: clamp(20px, 2vw, 40px);
+  --h-topbar: 56px;
+  --size-hero-num: var(--text-display);
+  --size-h1: var(--text-2xl);
+  --size-alert-type: var(--text-base-mono);
+  --size-alert-snippet: var(--text-base-mono);
+}
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+/* CJK 시스템 폰트 스택 — `lang` 속성 기반 자동 매칭 (BilingualPanel 등). */
+[lang="zh-CN"] {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB',
+    'Noto Sans SC', sans-serif;
+}
+[lang="zh-TW"] {
+  font-family: 'PingFang TC', 'Microsoft JhengHei', 'Hiragino Sans CNS',
+    'Noto Sans TC', sans-serif;
+}
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--lh-relaxed);
+    letter-spacing: var(--tracking-snug);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* transition은 사용자 토글 시점에만 — 초기 paint 깜빡임 방지 위해
+       data-theme 전환 자체는 즉시, 주변 색만 부드럽게 */
+    transition: background 0.2s ease, color 0.2s ease;
+    font-feature-settings: 'ss06' on, 'ss07' on;
+    word-break: keep-all;
   }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  html { font-family: var(--font-sans); }
+  button { font-family: inherit; cursor: pointer; }
+  code, kbd, .font-mono, [class*="mono"] {
+    font-feature-settings: 'liga' off, 'calt' off;
   }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
 }
