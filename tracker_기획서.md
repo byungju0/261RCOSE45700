@@ -70,6 +70,8 @@
 
 시스템은 크롤러 워커 / 탐지 모델 / API 서버 역할로 EC2 3대를 분리하여 독립적으로 스케일링할 수 있도록 설계한다. S3는 원시 데이터 공유 스토리지, RDS는 탐지 결과 관계형 저장소, **Redis(API EC2 공존)**는 메시지 큐 + 캐시 + VARCO rate limit 역할을 담당한다. 외부 VARCO API는 탐지 모델 EC2에서 호출한다.
 
+> 🛠 **인프라 관리는 Terraform IaC로 일원화한다 (ClickOps 금지).** EC2·RDS·S3·SG·IAM 등 모든 AWS 리소스는 `infra/terraform/` 코드로 정의하며, 변경은 PR `terraform plan` 리뷰를 거친다. dev 환경은 main 머지 시 자동 apply, prod는 GitHub Environments 보호 규칙으로 수동 승인 후 apply. state는 S3 + DynamoDB lock으로 관리. 시크릿은 AWS Secrets Manager / SSM Parameter Store에 저장하고 `tfstate`에 평문으로 두지 않는다. 상세 결정 근거는 `_bmad-output/planning-artifacts/architecture.md` Infrastructure & Deployment 섹션, Story 5.3 (`epics.md`) 참조.
+
 #### 2.1.1 공통 구성 요소
 
 | 서버 / 리소스 | 역할 | 주요 구성 요소 |
@@ -413,6 +415,7 @@ flowchart TD
 | 메시지 큐 + 캐시 | **Redis** (API EC2 docker-compose 공존) | `posts:queue`/`processing`/`dlq`/`dedup`, VARCO rate limit, 세션/대시보드 캐시 |
 | AI (VARCO) | **BERT [TBD]**, VARCO LLM, Translation, Vision | 2차 필터(미정) + 다국어 번역 + 불법 분류 + 이미지 탐지 |
 | 클라우드 | AWS EC2 x3, S3, RDS (PostgreSQL) | 크롤러·탐지·API 서버 분리 + 데이터 저장 |
+| IaC | Terraform | AWS 리소스(EC2·RDS·S3·SG·IAM) 코드로 관리. ClickOps 금지. PR `terraform plan` 리뷰 + dev 자동/prod 수동 apply. state는 S3 + DynamoDB lock |
 | API 서버 | Java Spring | REST API, 자동 Swagger 문서화 |
 | 대시보드 | React | 탐지 현황·차트·게시글 목록 시각화 |
 | 모니터링 | Prometheus + Grafana, CloudWatch | API 응답 시간·에러율·큐 길이·DLQ 알람 |

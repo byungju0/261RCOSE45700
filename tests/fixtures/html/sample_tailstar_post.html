@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture for Story 2.2 (TailstarSite parser unit tests).
+  Mimics tailstar.net XpressEngine post detail page selectors observed in
+  Story 2.1 spike (meta[name=Generator][content*=XpressEngine], og tags,
+  document_xe_content body wrapper). NOT a live capture — intentionally
+  isolated from upstream HTML changes.
+
+  Synthetic content describes a fictional "매크로 판매" post solely to
+  exercise the keyword filter pipeline planned for Story 2.3. No real
+  contact info, no real product links.
+-->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>테일스타 - 매크로 판매합니다 / 자유게시판</title>
+  <meta name="Generator" content="XpressEngine">
+  <meta property="og:title" content="매크로 판매합니다">
+  <meta property="og:url" content="https://tailstar.net/index.php?mid=board_main&document_srl=987654">
+  <meta property="og:image" content="https://tailstar.net/files/attach/images/2026/04/28/sample-thumb.jpg">
+  <meta property="article:published_time" content="2026-04-28T09:15:00+09:00">
+  <link rel="canonical" href="https://tailstar.net/index.php?mid=board_main&document_srl=987654">
+</head>
+<body>
+  <header class="site-header">
+    <nav>홈 / 자유게시판 / 매크로 판매합니다</nav>
+  </header>
+  <main>
+    <article class="board-document">
+      <h1>매크로 판매합니다</h1>
+      <div class="document-info">
+        <time datetime="2026-04-28T09:15:00+09:00">2026-04-28 09:15</time>
+        <span class="author">익명</span>
+      </div>
+      <div class="document_xe_content">
+        <p>안녕하세요, 게임용 매크로 프로그램 판매합니다.</p>
+        <p>특정 게임 자동 사냥 / 자동 채집 지원합니다. 텔레그램으로 문의 주세요.</p>
+        <p>가격 협의 가능, 외주 핵 제작도 받습니다.</p>
+        <img src="/files/attach/images/2026/04/28/sample-thumb.jpg" alt="썸네일">
+        <img src="https://cdn.tailstar.net/board/2026/04/sample-detail.jpg" alt="상세">
+      </div>
+    </article>
+  </main>
+  <footer>
+    <p>Powered by XpressEngine</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,60 @@
+name: crawler
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crawler/**'
+      - 'shared/**'
+      - '.github/workflows/crawler.yml'
+  pull_request:
+    paths:
+      - 'crawler/**'
+      - 'shared/**'
+      - '.github/workflows/crawler.yml'
+
+jobs:
+  lint-test:
+    name: lint-test
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: crawler
+    defaults:
+      run:
+        working-directory: crawler
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: crawler/requirements.txt
+
+      - name: Upgrade pip + setuptools
+        run: python -m pip install --upgrade pip setuptools
+
+      - name: Install dependencies (-e ../shared via requirements.txt)
+        run: pip install -r requirements.txt
+
+      - name: Install lint + test tools
+        run: pip install flake8 pytest
+
+      - name: flake8
+        run: flake8 src tests --max-line-length=120
+
+      - name: pytest
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests/unit -v
+          code=$?
+          set -e
+          # exit 5 = pytest "no tests collected" — placeholder 단계에서는 pass 처리.
+          # 실제 테스트가 추가되면 자연스럽게 일반 exit code(0/1)로 평가됨.
+          if [ "$code" -eq 5 ]; then
+            echo "::notice::No tests collected — placeholder OK (Story 1.5)"
+            exit 0
+          fi
+          exit "$code"

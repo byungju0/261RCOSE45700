@@ -29,3 +29,6 @@ build/
 # Environment files
 .env
 *.env.local
+
+# Claude agents
+.agents/

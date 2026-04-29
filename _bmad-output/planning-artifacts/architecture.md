@@ -172,6 +172,7 @@ npm install @tanstack/react-query axios recharts \
 - 페이지네이션: Offset 기반
 - 라우팅: React Router v7
 - 데이터 갱신: TanStack Query 폴링 60초
+- IaC 도구: Terraform (S3+DynamoDB state 백엔드, 디렉토리 분리 환경, dev 자동 / prod 수동 승인)
 
 **Deferred Decisions (Post-MVP):**
 - DLQ 알람 채널: Grafana UI만 사용 (Slack/이메일은 Growth 단계)
@@ -220,6 +221,11 @@ npm install @tanstack/react-query axios recharts \
 | DLQ 알람 채널 | Grafana UI | MVP에서 Grafana 웹 대시보드 알람만 사용. Slack/이메일 알림은 Growth 단계에서 Grafana Alerting Contact Point 추가로 확장. |
 | CI/CD | GitHub Actions | 코드 푸시 시 자동 빌드·배포. Python(crawler, detection), Java Spring(api), React(dashboard) 각각 독립 워크플로우. |
 | 로컬 개발 환경 | Docker Compose | Redis + PostgreSQL 로컬 구동. `infra/docker-compose.yml`에 Redis DB index 환경변수 명시. |
+| IaC 도구 | Terraform | AWS EC2/RDS/S3/SG/IAM 프로비저닝을 코드로 관리. ClickOps 금지(drift 차단), `terraform plan`으로 PR 단계 변경 미리보기 가능. CDK 대비 멀티-언어 스택(Python/Java/Node)과 무관하게 작동. AWS 외 GitHub/Datadog provider 추가 시도 동일 구조 유지. |
+| Terraform state 백엔드 | S3 + DynamoDB lock | 표준 패턴. Terraform Cloud는 외부 의존 추가 — MVP 회피. state는 별도 `tracker-tfstate-{env}` S3 버킷에 저장(서버사이드 암호화 + 버전 관리), DynamoDB 테이블로 동시 apply 락. 부트스트랩(state 버킷 자체 생성)은 별도 `infra/terraform/bootstrap/` 1회성 apply로 처리. |
+| 환경 분리 전략 | 디렉토리 분리 (`environments/dev/`, `environments/prod/`) | workspace는 3인 팀에서 잘못된 workspace 선택 사고 위험. 디렉토리 분리는 state·variables·backend 모두 환경별로 명시적이라 안전. |
+| Terraform 시크릿 처리 | AWS Secrets Manager + SSM Parameter Store, `data` 블록 참조 | `tfvars`나 `tfstate`에 평문 시크릿 절대 금지(NFR5). 시크릿은 AWS 관리형 스토어에 저장하고 Terraform에서는 참조만. EC2는 IAM Instance Role로 런타임 조회. |
+| Terraform apply 정책 | dev 자동 / prod 수동 승인 | PR 단계: `terraform plan` 결과 PR 코멘트로 자동 게시. main 머지: dev 환경은 GitHub Actions가 자동 apply. prod는 GitHub Environments 보호 규칙으로 수동 승인 게이트(Story 5.2/5.3에서 도입). |
 
 ### Decision Impact Analysis
 
@@ -630,9 +636,26 @@ tracker/
 │   ├── docker-compose.prod.yml        # 프로덕션 오버라이드
 │   ├── prometheus/
 │   │   └── prometheus.yml
-│   └── grafana/
-│       └── dashboards/
-│           └── tracker.json
+│   ├── grafana/
+│   │   └── dashboards/
+│   │       └── tracker.json
+│   └── terraform/                     # AWS IaC (Story 5.3에서 본격 구현)
+│       ├── bootstrap/                 # state 백엔드 1회성 부트스트랩
+│       │   └── main.tf                # S3 state 버킷 + DynamoDB lock 테이블
+│       ├── modules/                   # 재사용 모듈
+│       │   ├── networking/            # VPC + subnets + 보안 그룹
+│       │   ├── ec2-service/           # crawler/detection/api 공통 패턴
+│       │   ├── rds/                   # PostgreSQL (NFR7 보안 그룹 포함)
+│       │   ├── elasticache/           # Redis (NFR8 — t3.medium, AOF on)
+│       │   └── s3-frontend/           # dashboard 정적 호스팅 (CloudFront 옵션)
+│       └── environments/
+│           ├── dev/
+│           │   ├── main.tf
+│           │   ├── variables.tf
+│           │   ├── terraform.tfvars   # gitignore (시크릿 변수 없도록 검증)
+│           │   └── backend.tf         # S3 backend (dev tfstate)
+│           └── prod/
+│               └── (동일 구조, prod tfstate)
 │
 └── .env.example                       # 루트 공통 환경변수 템플릿
 ```

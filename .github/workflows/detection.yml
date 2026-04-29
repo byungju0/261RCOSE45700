@@ -1,0 +1,58 @@
+name: detection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'detection/**'
+      - 'shared/**'
+      - '.github/workflows/detection.yml'
+  pull_request:
+    paths:
+      - 'detection/**'
+      - 'shared/**'
+      - '.github/workflows/detection.yml'
+
+jobs:
+  lint-test:
+    name: lint-test
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: detection
+    defaults:
+      run:
+        working-directory: detection
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: detection/requirements.txt
+
+      - name: Upgrade pip + setuptools
+        run: python -m pip install --upgrade pip setuptools
+
+      - name: Install dependencies (-e ../shared via requirements.txt)
+        run: pip install -r requirements.txt
+
+      - name: Install lint + test tools
+        run: pip install flake8 pytest
+
+      - name: flake8
+        run: flake8 src tests --max-line-length=120
+
+      - name: pytest
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests/unit -v
+          code=$?
+          set -e
+          if [ "$code" -eq 5 ]; then
+            echo "::notice::No tests collected — placeholder OK (Story 1.5)"
+            exit 0
+          fi
+          exit "$code"
