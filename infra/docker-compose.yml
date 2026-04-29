@@ -1,3 +1,5 @@
+name: tracker
+
 # Redis DB role assignments (DB0~3 logical separation)
 # Application services (crawler/detection/api) will use <<: *redis-db-config
 x-redis-db-config: &redis-db-config
@@ -11,7 +13,7 @@ services:
     image: redis:7-alpine
     container_name: tracker-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -21,7 +23,7 @@ services:
     image: postgres:16-alpine
     container_name: tracker-postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-tracker}
       POSTGRES_USER: ${DB_USER:-tracker_user}

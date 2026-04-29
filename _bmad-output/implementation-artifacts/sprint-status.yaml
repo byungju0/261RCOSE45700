@@ -80,7 +80,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-27
-last_updated: 2026-04-29  # Story 1-3 dev completed (status: in-progress → review)
+last_updated: 2026-04-29  # Story 1-3 code-review completed → done (4 patches applied: 127.0.0.1 binding, env-comment hygiene, project name, port overrides)
 project: 20261R0136COSE45700
 project_key: NOKEY
 tracking_system: file-system
@@ -91,7 +91,7 @@ development_status:
   epic-1: in-progress
   1-1-모노레포-구조-초기화-및-서브시스템-스캐폴딩: review
   1-2-공유-인터페이스-계약-및-구조화-로깅-수립: done
-  1-3-로컬-개발-환경-구성: review
+  1-3-로컬-개발-환경-구성: done
   1-4-flyway-db-초기-스키마-및-varco-mock-서버-구축: backlog
   1-5-github-actions-기본-ci-파이프라인-구성: backlog
   epic-1-retrospective: optional
