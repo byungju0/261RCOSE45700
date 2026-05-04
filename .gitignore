@@ -36,7 +36,7 @@ build/
 
 # Terraform (Story 5.3)
 **/.terraform/
-**/.terraform.lock.hcl
+# .terraform.lock.hcl은 commit 권장 (best practice — provider 버전 일관성 보장)
 *.tfstate
 *.tfstate.*
 *.tfplan

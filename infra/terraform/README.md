@@ -53,6 +53,27 @@ infra/terraform/
 | CloudTrail / KMS CMK / Budgets / Flow Logs | **모두 미생성** (학생 계정 권한 부족 가정) | 모두 코드로 정의 |
 | 월 예산 | **학교 사전 설정 budget 활용** | 30만원 자체 Budget |
 
+## `.terraform.lock.hcl` commit 정책 (best practice)
+
+`.terraform.lock.hcl`은 provider 버전(예: `hashicorp/aws v6.43.0`)을 hash까지 박아두는 lock 파일. **반드시 git commit**해서 모든 환경에서 동일 provider 버전 사용 보장 (HashiCorp 공식 권장).
+
+**bootstrap apply 또는 환경 init 후 절차:**
+
+```bash
+# CloudShell에서 init 직후
+cd infra/terraform/bootstrap   # 또는 environments/dev
+terraform init                  # → .terraform.lock.hcl 생성
+
+# 로컬로 다운로드 (CloudShell 우상단 Actions → Download file)
+# → repo 같은 위치에 두고 commit
+git add infra/terraform/bootstrap/.terraform.lock.hcl
+git commit -m "chore(infra): commit terraform.lock.hcl (provider version pin)"
+```
+
+각 디렉토리(bootstrap + environments/{dev,prod} + modules/*)별로 1회 생성 + commit. 이후 provider 마이너 업데이트 시 `terraform init -upgrade`로 lock 갱신 + commit.
+
+**왜 필요한가** — 본 PR에서 겪은 v6→v7 메이저 호환성 사고를 lock으로 부분 방지. lock 없으면 매 init 시 가장 최신 provider를 받아 의도치 않은 breaking change 노출.
+
 ## 학생 계정 정보 (확정)
 
 | 항목 | 값 |
