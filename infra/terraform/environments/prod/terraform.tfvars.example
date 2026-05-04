@@ -1,0 +1,13 @@
+# prod 환경 변수 예시. terraform.tfvars는 .gitignore.
+# Public repo PII 보호를 위해 모든 값은 placeholder.
+
+region              = "ap-northeast-2"
+name_prefix         = "tracker-prod"
+github_repository   = "byungju0/261RCOSE45700"
+tfstate_bucket_name = "tracker-tfstate-prod"
+
+# AWS Budgets 알림 수신 이메일 — placeholder
+budget_alert_emails = ["your-budget-email@example.com"]
+
+# dev `terraform output oidc_provider_arn` 값을 여기 주입
+existing_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"

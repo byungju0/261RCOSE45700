@@ -33,3 +33,23 @@ build/
 
 # Claude agents
 .agents/
+
+# Terraform (Story 5.3)
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# tfvars: example만 commit, 실제 값은 제외
+infra/terraform/**/terraform.tfvars
+infra/terraform/**/*.auto.tfvars
+infra/terraform/**/*.auto.tfvars.json
+!infra/terraform/**/terraform.tfvars.example

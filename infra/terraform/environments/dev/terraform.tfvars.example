@@ -1,0 +1,12 @@
+# dev 환경 변수 예시.
+# 실제 사용 시 `cp terraform.tfvars.example terraform.tfvars` 후 값 채움.
+# terraform.tfvars는 .gitignore — public repo에 PII/시크릿 노출 방지.
+
+region              = "ap-northeast-2"
+name_prefix         = "tracker-dev"
+github_repository   = "byungju0/261RCOSE45700"
+tfstate_bucket_name = "tracker-tfstate-dev"
+
+# AWS Budgets 알림 수신 이메일 — placeholder
+# 실제 운영 이메일로 교체 (CI는 GitHub Variables → TF_VAR_BUDGET_ALERT_EMAILS로 주입)
+budget_alert_emails = ["your-budget-email@example.com"]
