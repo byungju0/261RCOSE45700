@@ -52,14 +52,22 @@ skip-check:
   - CKV2_AWS_61
 
   # ──────────────────────────────────────────────────────────────────────────
-  # CKV_AWS_111 — IAM 정책 와일드카드 (Resource: "*")
-  # GHA Terraform Role의 mutate 정책은 service-level write로 정의.
-  # EC2 Instance Role(crawler/detection/api)은 모두 ARN 한정 적용.
+  # CKV_AWS_111 / CKV_AWS_356 / CKV_AWS_107 / CKV_AWS_109 / CKV_AWS_110
+  # ── IAM 정책 와일드카드 / privilege escalation / credentials exposure
+  # GHA Terraform Role의 mutate 정책은 학생 계정 PIVOT으로 service-level write
+  # `Resource: "*"` 사용 (ec2:* / rds:* / iam:* 등). 학생 프로젝트 범위에서
+  # 정밀 ARN 한정은 운영 부담이 매우 큼 → 학교 권한 한정 + ControlOnlyOwnResources
+  # 정책 + 학생 본인만 assume 가능한 OIDC sub claim으로 외부 노출 차단.
+  # EC2 Instance Role(crawler/detection/api)은 모두 ARN 한정 적용 — IAM 모듈 README 참조.
   # ──────────────────────────────────────────────────────────────────────────
   - CKV_AWS_111
+  - CKV_AWS_356
+  - CKV_AWS_107
+  - CKV_AWS_109
+  - CKV_AWS_110
 
   # ──────────────────────────────────────────────────────────────────────────
-  # CKV2_AWS_11 / CKV_AWS_19 — VPC Flow Logs / S3 SSE-KMS
+  # CKV2_AWS_11 / CKV_AWS_19 — VPC Flow Logs / S3 SSE-KMS (AES256 폴백)
   # 사유: 학생 계정 PIVOT — VPC Flow Logs 권한 부족 가정 (Default VPC),
   # KMS CMK 생성 권한 부족 가정 → SSE-S3(AES256) 폴백.
   # ──────────────────────────────────────────────────────────────────────────
@@ -72,3 +80,57 @@ skip-check:
   # ──────────────────────────────────────────────────────────────────────────
   - CKV_AWS_158
   - CKV_AWS_67
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV_AWS_145 — S3 buckets should be encrypted with KMS by default
+  # 사유: 학생 계정 PIVOT — KMS CMK 생성 권한 부족 가정 → SSE-S3(AES256) 폴백.
+  # CKV_AWS_19와 별도 룰이지만 동일 사유. SSE 자체는 활성(AES256).
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV_AWS_145
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV_AWS_18 — S3 bucket access logging
+  # 사유: 학생 계정 PIVOT — CloudTrail / access log 인프라 자체 미생성.
+  # tfstate / archive 버킷은 별도 access log 버킷으로 보내지 않음.
+  # 학교 organization trail이 S3 데이터 이벤트를 잡는 경우 그것에 의존.
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV_AWS_18
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV_AWS_144 — S3 cross-region replication
+  # 사유: 학생 11주 프로젝트 + 30만원 예산 상한. cross-region replication은
+  # 데이터 전송 비용 + storage 2배 비용 발생. 학생 환경에서 정당화 안 됨.
+  # 단일 region(ap-northeast-2)에서 versioning + lifecycle로 데이터 보호.
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV_AWS_144
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV2_AWS_62 — S3 buckets should have event notifications enabled
+  # 사유: tfstate / archive 버킷에 Lambda / SQS / SNS 트리거가 필요한 워크로드 X.
+  # tfstate는 Terraform 자체가 backend로 사용, archive는 crawler put-only.
+  # event notification 없어도 운영 영향 0.
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV2_AWS_62
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV2_AWS_57 — Secrets Manager secrets should have automatic rotation enabled
+  # 사유: 3종 시크릿 모두 자동 회전이 본 스토리에서 부적합:
+  #   - rds-admin-password: RDS 모듈이 random_password.admin → password_wo로 주입,
+  #     password_wo_version increment로 회전 트리거하는 다른 메커니즘 사용
+  #     (Secrets Manager 자동 회전은 Lambda 함수 추가 + RDS reboot 동기화 필요)
+  #   - varco-api-key: VARCO API 발급키이므로 외부에서 회전 결정 (자동 회전 불가)
+  #   - proxy-credentials: 외부 프록시 서비스(IPRoyal/ThorData) 자격 증명, 외부 회전
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV2_AWS_57
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # CKV_TF_1 — Terraform module sources should use commit hash
+  # 사유: 학생 프로젝트 범위에서 commit hash 핀은 supply chain 보안의 가장 엄격한
+  # 권장 사항이지만 다음 보강으로 충분:
+  #   - terraform-aws-modules/* 공식 검증 모듈 + Terraform Registry 사용
+  #   - semver pessimistic constraint(`~> X.Y`) 핀
+  #   - .terraform.lock.hcl commit (provider hash 박힘, 본 PR에서 정책 적용)
+  #   - Dependabot 매주 모듈 버전 갱신 PR (signed by maintainer 검증 가능)
+  # 졸업 후 production 환경에서는 commit hash로 전환 검토 (deferred-work).
+  # ──────────────────────────────────────────────────────────────────────────
+  - CKV_TF_1
