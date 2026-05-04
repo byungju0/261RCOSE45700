@@ -107,65 +107,36 @@ terraform apply
 
 ⚠️ **CloudShell home 디렉토리 1GB 제한 + 일정 기간 미사용 시 자동 wipe**. bootstrap apply 후 `terraform.tfstate` 즉시 로컬 다운로드(CloudShell 우상단 Actions → Download file) + 안전한 곳(1Password 등) 백업 필수.
 
-## CI 자동 apply (GitHub Actions OIDC)
-
-본 repo의 `.github/workflows/terraform.yml`은 OIDC로 IAM Role assume 후 자동 apply 시도. 다음 검증 필요:
-
-1. CloudShell에서 `terraform apply`로 IAM 모듈 생성 → OIDC Provider + GHA Role 만들어짐
-2. GitHub Settings → Secrets and variables → Actions → Variables에 등록:
-   - `AWS_TF_ROLE_DEV` = dev `terraform output github_actions_role_arn`
-   - `BUDGET_ALERT_EMAILS` = `["<your-budget-email@example.com>"]` (JSON 배열 문자열)
-3. PR 올려서 `plan-dev` 잡 동작 확인
-4. **만약 OIDC assume 시 `<mfa-required-scp>` SCP에 차단되면** → CI 영구 비활성(`if: false`) + CloudShell 수동 apply만 사용 (deferred-work 항목)
-
 ## prod 환경 미사용
 
-prod는 학생 계정에서 미사용. `terraform apply -var "env=prod"` 실행 금지. CI workflow의 apply-prod 잡도 `if: false` 영구 비활성.
+prod는 학생 계정에서 미사용. `terraform apply -var "env=prod"` 실행 금지.
 
-## 환경 apply (CI 자동화)
+## CI 게이트 — 정적 가드만 (plan/apply 자동화 없음)
 
-| 트리거 | 환경 | 게이트 |
+`.github/workflows/terraform.yml` — `static-checks` 단일 잡:
+
+| 트리거 | 잡 | 내용 |
 |---|---|---|
-| `pull_request` (paths: `infra/terraform/**`) | — | static-checks → plan-dev → PR 코멘트 |
-| `push` to `main` | dev | static-checks → apply-dev (자동) |
-| `push` to `main` (apply-dev 통과 후) | prod | apply-prod (Environments `prod` 수동 승인) |
+| `pull_request` (paths: `infra/terraform/**`) | static-checks | fmt + validate + TFLint + Checkov |
+| `push` to `main` (paths: `infra/terraform/**`) | static-checks | 동일 |
 
-수동 apply가 필요한 경우(긴급 복구 등):
+학생 계정 SCP(`<mfa-required-scp>` + IAM Access Key 발급 차단) 운영 결정으로 **CI에서는 plan/apply를 자동 실행하지 않음**. 실 plan/apply는 사용자가 AWS CloudShell에서 위 절차로 수동 실행.
 
-```bash
-cd infra/terraform/environments/dev
-export AWS_PROFILE=tracker-dev
-cp terraform.tfvars.example terraform.tfvars  # 1회
+`static-checks` 잡 4단계:
+1. `terraform fmt -check -recursive infra/terraform`
+2. 모듈/환경 디렉토리별 `terraform validate`
+3. `tflint --config=.tflint.hcl` (AWS plugin 0.47.0, `aws_instance_invalid_type` 등)
+4. `checkov --config-file .checkov.yml` (skip 룰 9종 모두 architecture.md 또는 학생 계정 PIVOT 인용 사유 명시)
 
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-```
-
-## CI 게이트
-
-`.github/workflows/terraform.yml` — 정적 가드 4종 + plan/apply 4잡:
-
-1. **static-checks** (모든 PR/push)
-   - `terraform fmt -check -recursive`
-   - 모듈/환경 디렉토리별 `terraform validate`
-   - `tflint --config=.tflint.hcl` (`aws_instance_invalid_type` 등)
-   - `checkov --config-file .checkov.yml` (skip 룰은 architecture.md 인용)
-2. **plan-dev** (PR만) — `terraform plan` → PR 코멘트
-3. **apply-dev** (main 머지) — 자동
-4. **apply-prod** (apply-dev 통과 + Environments 보호 규칙 승인)
+→ AWS API 호출 / credentials / OIDC 모두 불필요. workflow `permissions: contents: read` (read-only). 비용 0.
 
 ## 사전 요구 (1회 ops)
 
-CI가 동작하려면 **GitHub repository 설정**에 다음을 등록해야 한다:
-
-| GitHub | 키 | 값 | 용도 |
-|---|---|---|---|
-| Variables | `AWS_TF_ROLE_DEV` | dev `terraform output github_actions_role_arn` | OIDC role assume (dev) |
-| Variables | `AWS_TF_ROLE_PROD` | prod `terraform output github_actions_role_arn` | OIDC role assume (prod) |
-| Variables | `OIDC_PROVIDER_ARN` | dev `terraform output oidc_provider_arn` | prod 잡의 `existing_oidc_provider_arn` 주입 |
-| Variables | `BUDGET_ALERT_EMAILS` | `["your-email@example.com"]` (JSON 배열 문자열) | Budgets 알림 이메일 (PII 코드 미박힘) |
-| Environments | `prod` | reviewers 등록 (수동 승인 게이트) | apply-prod 잡 보호 |
+| 항목 | 절차 |
+|---|---|
+| Bootstrap apply | CloudShell에서 1회 (위 "Terraform 사용 — AWS CloudShell" 섹션) |
+| Secrets Manager 시크릿 1회 주입 | 아래 |
+| GitHub Repository 보안 가드 점검 | 아래 "GitHub 측 점검 항목" 표 |
 
 ### Secrets Manager 1회 주입
 
@@ -179,7 +150,7 @@ aws secretsmanager put-secret-value \
   --secret-string '{"username":"...","password":"...","endpoint":"..."}'
 ```
 
-`tracker/{env}/rds-admin-password`는 `random_password`가 자동 주입한다.
+`tracker/dev/rds-admin-password`는 `random_password`가 자동 주입한다.
 
 ## drift 점검
 
@@ -226,9 +197,9 @@ pre-commit run --all-files
 | 정적 보안 스캔 (Checkov + TFLint) PR 게이트 | `terraform.yml` static-checks 잡 |
 | RDS password `random_password` + `ignore_changes` (state 평문 노출 최소화) | `modules/rds/` |
 | S3 버킷 4종 퍼블릭 차단 + TLS-only deny | 모든 S3 모듈 |
-| **fork PR plan 차단** (다른 repo 포크에서 OIDC 토큰 assume 시도 차단) | `terraform.yml` plan-dev `if:` |
+| **CI plan/apply 잡 미존재** — fork PR이 OIDC 토큰을 받아 우리 AWS로 assume 시도할 통로 자체 없음 (정적 가드만 실행) | `terraform.yml` static-checks 단일 잡 |
 | **`pull_request_target` 절대 사용 금지** (pwn-request 패턴 회피) | 본 repo 워크플로우 4종 모두 `pull_request` 사용 |
-| **PII(이메일) 코드 default 미박힘** (CI는 `vars.BUDGET_ALERT_EMAILS`에서 주입) | `environments/{dev,prod}/variables.tf` |
+| **PII(이메일) 코드 default 미박힘** (실제 값은 `terraform.tfvars` `.gitignore` 또는 CloudShell 환경변수) | `environments/{dev,prod}/variables.tf` |
 | **CODEOWNERS** — `infra/`/`.github/`/`dashboard/` 변경 PR에 `@gitjay3` 자동 review 요청 | `.github/CODEOWNERS` |
 | **Dependabot** — terraform-aws-modules / GitHub Actions / dashboard npm 의존성 매주 자동 PR | `.github/dependabot.yml` |
 | **Workflow `permissions:` 최소 권한** — workflow default `contents: read`, 잡별로 필요 권한만 추가 | `terraform.yml` 각 잡 `permissions:` 블록 |
@@ -240,14 +211,13 @@ pre-commit run --all-files
 | **Secret scanning** | public repo 자동 활성 | Settings → Code security → Secret scanning | "Enabled" 표시 확인 |
 | **Push protection** | public repo 자동 활성 | Settings → Code security → Secret scanning → Push protection | "Enabled" 표시 확인 |
 | **First-time contributor 승인 게이트** | 기본 활성 | Settings → Actions → General → "Fork pull request workflows from outside collaborators" | "Require approval for first-time contributors" 라디오가 선택되어 있는지 확인 |
-| **Repository Ruleset (main)** | 미설정 | Settings → **Rules → Rulesets** → New ruleset → Branch ruleset | Target `main` 지정 후 ✅ Restrict deletions / ✅ Require linear history / ✅ Require pull request before merging (1 reviewer) / ✅ **Require review from Code Owners** (CODEOWNERS 활용) / ✅ Require status checks to pass (`Static checks (fmt / validate / TFLint / Checkov)` + `Plan (dev)` 등록) / ✅ Block force pushes — branch protection rule보다 권장 (다중 ruleset 동시 적용 가능, 2026 표준) |
+| **Repository Ruleset (main)** | 미설정 | Settings → **Rules → Rulesets** → New ruleset → Branch ruleset | Target `main` 지정 후 ✅ Restrict deletions / ✅ Require linear history / ✅ Require pull request before merging (1 reviewer) / ✅ **Require review from Code Owners** (CODEOWNERS 활용) / ✅ Require status checks to pass (`Static checks (fmt / validate / TFLint / Checkov)` 등록) / ✅ Block force pushes — branch protection rule보다 권장 (다중 ruleset 동시 적용 가능, 2026 표준) |
 | **Dependabot security updates** | 기본 활성 | Settings → Code security → Dependabot | "Dependabot security updates" + "Dependabot version updates" 두 토글 모두 Enabled (version updates는 `.github/dependabot.yml`로 동작) |
-| **Environments → prod reviewers** | 미설정 | Settings → Environments → New environment "prod" → Required reviewers | 본인 + 팀원 등록 (apply-prod 수동 승인 게이트) |
 
 ### 사고 시 대응
 
 - **AWS Key/Token 누설 (push protection을 누가 bypass)** — 즉시 IAM 콘솔에서 키/Role 비활성화 → CloudTrail로 사용 이력 조회 → 영향 범위에 따라 리소스 회수.
-- **타인 fork PR이 plan-dev를 트리거한 흔적** — fork 차단 `if:` 가드가 있어 OIDC assume 단계에서 실패. Actions 로그 확인 후 contributor 신원 재검토.
+- **타인 fork PR로 의심 trigger 흔적** — `terraform.yml`은 정적 가드만 실행 (AWS credentials / OIDC 미사용)이라 fork PR이 우리 AWS 자원을 만질 통로 자체 없음. Actions 로그에서 contributor 신원만 확인.
 - **drift 발견** — Console에서 누가 ClickOps 했는지 CloudTrail 추적 + `terraform plan -refresh-only`로 차이 진단 → 코드 반영 또는 apply로 정정.
 
 ## 주의 — 안티패턴

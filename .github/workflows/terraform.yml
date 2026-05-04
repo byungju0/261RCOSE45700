@@ -1,5 +1,10 @@
 name: Terraform
 
+# 학생 계정(SCP DenyAllWithoutMFA + IAM Access Key 발급 차단) 운영 결정으로
+# CI에서는 plan/apply를 자동 실행하지 않는다. 정적 가드(fmt + validate + TFLint
+# + Checkov)만 PR/push에서 강제하고, 실 plan/apply는 사용자가 AWS CloudShell에서
+# 수동 실행한다 (infra/terraform/README.md "Terraform 사용 — AWS CloudShell" 참조).
+
 on:
   push:
     branches: [main]
@@ -15,27 +20,18 @@ on:
       - ".tflint.hcl"
       - ".checkov.yml"
 
-# Workflow-level default = 최소 권한 (read-only).
-# 각 잡이 필요한 권한만 자기 블록에서 추가한다 (Principle of Least Privilege).
+# Workflow 전체 default = read-only (Principle of Least Privilege).
+# 정적 가드만 실행하므로 AWS credentials / id-token / PR 코멘트 권한 모두 불필요.
 permissions:
   contents: read
 
 env:
   TF_VERSION: "1.15.1"
-  AWS_REGION: "ap-northeast-2"
-  # OIDC role ARN — Terraform IAM 모듈이 만든 GHA role.
-  # apply 시점에 이 값을 GitHub Secrets / Variables에 설정.
-  #   AWS_TF_ROLE_DEV  : tracker-dev-gha-terraform 의 ARN
-  #   AWS_TF_ROLE_PROD : tracker-prod-gha-terraform 의 ARN
 
 jobs:
-  # ──────────────────────────────────────────────────────────────────────────
-  # 1) 정적 가드 — fmt / validate / TFLint / Checkov
-  # ──────────────────────────────────────────────────────────────────────────
   static-checks:
     name: Static checks (fmt / validate / TFLint / Checkov)
     runs-on: ubuntu-latest
-    # 정적 가드 — 코드 read만 필요 (workflow default 그대로)
     permissions:
       contents: read
     steps:
@@ -85,157 +81,3 @@ jobs:
           config_file: .checkov.yml
           quiet: true
           soft_fail: false
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # 2) plan (dev) — PR 코멘트
-  # ──────────────────────────────────────────────────────────────────────────
-  plan-dev:
-    name: Plan (dev)
-    runs-on: ubuntu-latest
-    needs: static-checks
-    # Fork PR 차단 — fork에서 OIDC 토큰을 받아 우리 AWS로 assume 시도하는 것을
-    # 사전에 막는다(같은 repo의 PR/push만 plan 실행). pull_request_target은 절대 사용 금지.
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    # 본 잡이 필요한 권한만 — id-token(OIDC) + contents(checkout) + PR 코멘트
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: write
-    env:
-      # GitHub Variables → Terraform variable 주입 (PII/이메일은 코드/state에 박지 않음)
-      TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
-    defaults:
-      run:
-        working-directory: infra/terraform/environments/dev
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: AWS OIDC assume
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_TF_ROLE_DEV }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: terraform init
-        run: terraform init -input=false
-
-      - name: terraform plan
-        id: plan
-        run: |
-          set -o pipefail
-          terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
-
-      - name: PR comment with plan
-        # v8: Node 24 runtime. v9는 ESM 변경(우리 script은 require('fs')만 사용해 호환되나
-        # 보수적으로 v8 채택). Node 20은 2026-04 EOL.
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('infra/terraform/environments/dev/plan.txt', 'utf8');
-            const truncated = plan.length > 60000
-              ? plan.slice(0, 60000) + '\n\n…(truncated)…'
-              : plan;
-            const body = [
-              '### Terraform Plan — `dev`',
-              '',
-              '<details><summary>plan output</summary>',
-              '',
-              '```',
-              truncated,
-              '```',
-              '',
-              '</details>',
-            ].join('\n');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body,
-            });
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # 3) apply (dev) — main 머지 자동
-  # ──────────────────────────────────────────────────────────────────────────
-  apply-dev:
-    name: Apply (dev) — auto on main
-    runs-on: ubuntu-latest
-    needs: static-checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # apply 잡 — id-token(OIDC) + checkout만. PR 코멘트 권한 없음.
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
-    defaults:
-      run:
-        working-directory: infra/terraform/environments/dev
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: AWS OIDC assume
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_TF_ROLE_DEV }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: terraform init
-        run: terraform init -input=false
-
-      - name: terraform apply
-        run: terraform apply -input=false -auto-approve
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # 4) apply (prod) — GitHub Environments 보호 규칙 + 수동 승인
-  # ──────────────────────────────────────────────────────────────────────────
-  apply-prod:
-    name: Apply (prod) — DISABLED (학생 계정 PIVOT)
-    runs-on: ubuntu-latest
-    needs: apply-dev
-    # 학생 계정 PIVOT — prod 환경 미사용. CI 잡 영구 비활성.
-    # 졸업 후 실 production 계정 확보 시 if 조건 복원.
-    if: false
-    environment:
-      name: prod
-    # prod apply — id-token(OIDC) + checkout만
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
-      TF_VAR_existing_oidc_provider_arn: ${{ vars.OIDC_PROVIDER_ARN }}
-    defaults:
-      run:
-        working-directory: infra/terraform/environments/prod
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: AWS OIDC assume
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_TF_ROLE_PROD }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: terraform init
-        run: terraform init -input=false
-
-      - name: terraform apply
-        run: terraform apply -input=false -auto-approve
