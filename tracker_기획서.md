@@ -70,18 +70,35 @@
 
 시스템은 크롤러 워커 / 탐지 모델 / API 서버 역할로 EC2 3대를 분리하여 독립적으로 스케일링할 수 있도록 설계한다. S3는 원시 데이터 공유 스토리지, RDS는 탐지 결과 관계형 저장소, **Redis(API EC2 공존)**는 메시지 큐 + 캐시 + VARCO rate limit 역할을 담당한다. 외부 VARCO API는 탐지 모델 EC2에서 호출한다.
 
-> 🛠 **인프라 관리는 Terraform IaC로 일원화한다 (ClickOps 금지).** EC2·RDS·S3·SG·IAM 등 모든 AWS 리소스는 `infra/terraform/` 코드로 정의하며, 변경은 PR `terraform plan` 리뷰를 거친다. dev 환경은 main 머지 시 자동 apply, prod는 GitHub Environments 보호 규칙으로 수동 승인 후 apply. state는 S3 + DynamoDB lock으로 관리. 시크릿은 AWS Secrets Manager / SSM Parameter Store에 저장하고 `tfstate`에 평문으로 두지 않는다. 상세 결정 근거는 `_bmad-output/planning-artifacts/architecture.md` Infrastructure & Deployment 섹션, Story 5.3 (`epics.md`) 참조.
+> 🛠 **인프라 관리는 Terraform IaC로 일원화한다 (ClickOps 금지).** EC2·RDS·S3·SG·IAM 등 모든 AWS 리소스는 `infra/terraform/` 코드로 정의하며, **VPC·EC2·RDS·Security Group은 검증된 공식 모듈(`terraform-aws-modules/{vpc,ec2-instance,rds,security-group}/aws`)을 우선 사용**한다. 변경은 PR 단계에서 `terraform fmt`·`terraform validate`·**TFLint**·**Checkov**가 자동 실행되고 `terraform plan` 결과가 PR 코멘트로 게시된 뒤 리뷰를 거친다. dev 환경은 main 머지 시 자동 apply, prod는 GitHub Environments 보호 규칙으로 수동 승인 후 apply. **GitHub Actions ↔ AWS 인증은 OIDC + IAM Role(`aws_iam_openid_connect_provider`)로 처리하며 장기 Access Key는 사용하지 않는다.** state는 **S3 native locking**(`use_lockfile = true`, Terraform 1.10+)으로 관리하여 별도 DynamoDB lock 테이블이 불필요하다. 시크릿은 AWS Secrets Manager / SSM Parameter Store에 저장하고 `tfstate`에 평문으로 두지 않는다. 상세 결정 근거는 `_bmad-output/planning-artifacts/architecture.md` Infrastructure & Deployment 섹션, Story 5.3 (`epics.md`) 참조.
 
 #### 2.1.1 공통 구성 요소
 
 | 서버 / 리소스 | 역할 | 주요 구성 요소 |
 |------|------|----------------|
-| **크롤러 워커 EC2** | 한·중 사이트 자동 수집 (+ 옵션 A 시 전처리 인라인 수행) | [크롤링 도구 — 3.2 선택 필요], APScheduler, S3 업로더, (옵션 A 시 전처리 모듈: BeautifulSoup/lxml, langdetect, 키워드 필터) |
+| **크롤러 워커 EC2** | 한·중 사이트 자동 수집 (+ 옵션 A 시 전처리 인라인 수행) | Crawl4AI (Playwright 기반), FlareSolverr, APScheduler, S3 업로더, (옵션 A 시 전처리 모듈: BeautifulSoup/lxml, langdetect, 키워드 필터) |
 | **탐지 모델 EC2** | AI 탐지 파이프라인 실행 | **BERT [TBD]**, VARCO Translation API, VARCO LLM API, VARCO Vision API, RDS 저장 |
 | **API 서버 EC2** | REST API · 대시보드 · Redis 호스팅 (+ 옵션 B 시 전처리 Worker 구동) | Java Spring, **Redis (docker-compose 공존)**, Prometheus, Grafana, (옵션 B 시 전처리 Worker 프로세스) |
-| **AWS S3** | 원시 데이터 저장 | 크롤링 텍스트 + 이미지 원시 데이터 적재. EC2 간 데이터 공유, 재처리용 아카이브 |
-| **AWS RDS (PostgreSQL)** | 탐지 결과 저장 | sources / posts / post_images / detections 4개 테이블. 관계형 구조로 참조 무결성 보장 |
+| **AWS S3** | 원시 데이터 저장 | 크롤링 텍스트 + 이미지 원시 데이터 적재. EC2 간 데이터 공유, 재처리용 아카이브. **VPC Gateway Endpoint를 통해 NAT 통과 없이 접근하여 데이터 전송 비용 절감** |
+| **AWS RDS (PostgreSQL 16.13)** | 탐지 결과 저장 | sources / posts / post_images / detections 4개 테이블. 관계형 구조로 참조 무결성 보장. **db.t4g.micro Single-AZ + 7일 automated backup**로 비용 최소화. PostgreSQL 16은 minor patch 누적(2년+ 운영)된 성숙 버전 — PG17도 pgvector 등 extension 호환되지만 학생 11주 프로젝트엔 안정성 우선. 8.3절 Class-RAG(pgvector) 확장은 PG16/17 모두에서 지원됨 |
 | **Redis (API EC2 내 공존)** | MQ + 캐시 + rate limit | `posts:queue` (main), `posts:processing` (in-flight), `posts:dlq` (실패), `posts:dedup` (해시 SET), `varco:rate_limit` (토큰 버킷), 세션/대시보드 캐시 |
+
+#### 2.1.1.a 인스턴스 사이징 (월 예산 30만원, ~$215 상한)
+
+| 서버 / 리소스 | 인스턴스 타입 | vCPU | RAM | 월 비용 (USD) | 선정 근거 |
+|------|------|------|-----|------|------|
+| **Crawler EC2** | **r6g.large** (Graviton, 메모리 최적화) | 2 | **16GB** | ~$73.6 | Crawl4AI(Playwright Chromium 200MB/instance) + FlareSolverr Docker + (옵션 A 시) 전처리. 동시 8 사이트 + MemoryAdaptiveDispatcher가 RAM 보고 동시성 자동 조절. RAM 우선 정책 |
+| **Detection EC2** | **t4g.medium** (Graviton, burstable) | 2 | 4GB | ~$24.5 | VARCO API 호출 위주(외부 LLM)라 자체 연산 부담 작음. BERT 도입 결정 시(10.1) 인스턴스 타입 재산정 — CPU BERT는 c6g.large 추가 비용 발생, GPU(g4dn)는 30만원 예산 초과 |
+| **API EC2** | **t4g.large** (Graviton, burstable) | 2 | 8GB | ~$49.0 | Java Spring(JVM heap ~500MB) + Redis(docker-compose) + Prometheus + Grafana + Nginx + (옵션 B 시) 전처리 Worker가 한 호스트에 동거 — 4GB는 OOM 리스크 |
+| **AWS RDS** | **db.t4g.micro Single-AZ** | 2 | 1GB | ~$11.5 | MVP 트래픽(수천~수만 게시글) + 4테이블 단순 스키마 + 인덱스(2.3절). Multi-AZ는 비용 2배 → 학생 프로젝트엔 automated backup으로 충분 |
+| EBS / S3 / NAT / 데이터 전송 / 모니터링 | — | — | — | ~$50 | NAT Gateway 약 $37 포함 (5.0 SPIKE에서 NAT Instance·public subnet 전환 검토) |
+| **합계** | | | | **~$208/월 ≈ 29만원** | 30만원 예산 1만원 여유. BERT 도입 또는 트래픽 폭증 시 SPIKE 5.0 결정으로 NAT 비용 재구성 |
+
+> 📌 **Graviton(arm64) 선택 근거**: t3 대비 동급 RAM 기준 ~40% 비용 절감. **r6g·t4g 모두 Graviton2(2020 출시) 세대**로 안정성 우선 채택. 상위 세대(Graviton3 r7g `+25% 성능`, Graviton4 r8g `+30% 추가`) 옵션 존재 — Story 5.4 성능 한계 발견 시 한 단계 업그레이드 검토. Python(boto3, FastAPI, Crawl4AI/Playwright), Java(Corretto JDK ARM64), Spring/JVM 모두 ARM 공식 지원. Docker base image도 multi-arch(`linux/arm64`) 사용. AMI 선정 시 `arm64` 명시 필수.
+>
+> 📌 **본 표 가격은 미국 region 기준**입니다. ap-northeast-2(Seoul) 채택 시 일반적으로 5~15% 더 비싸 합계가 $230~245(약 32~34만원)로 증가할 수 있어 30만원 예산 초과 위험 — SPIKE 5.0(epics.md) Region·DNS·TLS 결정 후 정확 가격 재산정 필수.
+>
+> 📌 **Crawl4AI 운영 표준** (3.3 파이프라인 적용): Docker 실행 시 `--shm-size=2g` 강제(Chromium IPC SHM 부족 → SIGBUS 크래시 방지), `max_session_permit=6~8` 명시(8개 사이트 + r6g.large 16GB 기준 안정선), MemoryAdaptiveDispatcher 활성으로 메모리 압박 시 동시성 자동 감소.
 
 #### 2.1.2 아키텍처 옵션 (전처리 위치) — 팀 결정 필요
 
@@ -414,8 +431,10 @@ flowchart TD
 | 전처리 | BeautifulSoup/lxml, langdetect, 정규식 키워드 사전 | HTML 파싱·언어 감지·키워드 필터 |
 | 메시지 큐 + 캐시 | **Redis** (API EC2 docker-compose 공존) | `posts:queue`/`processing`/`dlq`/`dedup`, VARCO rate limit, 세션/대시보드 캐시 |
 | AI (VARCO) | **BERT [TBD]**, VARCO LLM, Translation, Vision | 2차 필터(미정) + 다국어 번역 + 불법 분류 + 이미지 탐지 |
-| 클라우드 | AWS EC2 x3, S3, RDS (PostgreSQL) | 크롤러·탐지·API 서버 분리 + 데이터 저장 |
-| IaC | Terraform | AWS 리소스(EC2·RDS·S3·SG·IAM) 코드로 관리. ClickOps 금지. PR `terraform plan` 리뷰 + dev 자동/prod 수동 apply. state는 S3 + DynamoDB lock |
+| 클라우드 | AWS EC2 x3 (Graviton arm64: r6g.large + t4g.medium + t4g.large), S3 (VPC Gateway Endpoint), RDS PostgreSQL 16.13 (db.t4g.micro Single-AZ) | 크롤러·탐지·API 서버 분리 + 데이터 저장. **월 예산 30만원(~$215)** 상한 내 운영 — 인스턴스 사이징 근거는 2.1.1.a 참조 |
+| IaC | Terraform `>= 1.14` (2026-04 시점 1.15.0) + AWS provider `~> 6.0` (2025-06-18 GA, 2026-04 시점 6.43.x) + terraform-aws-modules (vpc `~> 6.6`, rds `~> 7.2`, ec2-instance `~> 6.4`, security-group `~> 5.3`) | AWS 리소스(EC2·RDS·S3·SG·IAM) 코드로 관리. ClickOps 금지. 공식 검증 모듈 우선 사용. PR 시 `fmt`·`validate`·TFLint·Checkov 자동 실행(`antonbabenko/pre-commit-terraform` 표준 hook 저장소 + `terraform-docs` 자동 README) + `terraform plan` PR 코멘트 + dev 자동/prod 수동 apply. state는 S3 native locking(DynamoDB 불필요). GitHub Actions ↔ AWS는 OIDC 인증 |
+| EC2 접근·운영 | **AWS SSM Session Manager** (SSH 키 미사용) | EC2에 IAM Instance Role + SSM agent(Amazon Linux 2023 기본 포함). 외부 22번 포트 차단(NFR7), SSH 키 분배·회수 운영 부담 0, 세션 로그 자동 기록(NFR9 충족) |
+| 보안 baseline | EBS encryption by default, VPC Flow Logs → CloudWatch Logs, CloudTrail (KMS 암호화), S3 퍼블릭 차단 + Access Logging | Checkov CI 게이트로 PR 단계 강제. AWS Config/SecurityHub/GuardDuty는 학생 예산 초과로 미도입 — IaC 정책 스캔으로 대체 |
 | API 서버 | Java Spring | REST API, 자동 Swagger 문서화 |
 | 대시보드 | React | 탐지 현황·차트·게시글 목록 시각화 |
 | 모니터링 | Prometheus + Grafana, CloudWatch | API 응답 시간·에러율·큐 길이·DLQ 알람 |
@@ -533,12 +552,19 @@ LLM 기반 콘텐츠 분류 시스템의 실제 성능 벤치마크(OpenAI Moder
 ### 10.1 팀 결정 필요 항목 (2026-04-19 개정 시점 신규)
 
 1. **아키텍처 옵션 A vs B** (2.1.2) — 전처리 위치 (Crawler EC2 인라인 / API EC2 Worker)
-2. **크롤링 주기** (1.3, 3.3) — 15분 / 1시간 / 하루 2~4회 중 택일
+2. **크롤링 주기** (1.3, 3.3) — 15분 / 1시간 / 하루 2~4회 중 택일. 인스턴스 사이징(2.1.1.a)은 1시간 주기 전제 — 15분 결정 시 Crawler r6g.large → m6g.xlarge 상향 검토 필요(예산 영향)
 3. **크롤링 대상 사이트 최종 리스트** (3.1) — 최대 8개 중 MVP 실측 기반 운영 대상 확정
-4. **크롤링 브라우저 스텔스** (3.2.1) — Nodriver vs Playwright + stealth
+4. **크롤링 브라우저 스텔스** (3.2.1) — Nodriver vs Playwright + stealth (Crawl4AI 채택 시 Playwright 기반)
 5. **프록시 프로바이더** (3.2.3) — ThorData / IPRoyal ISP / Smartproxy ISP / Oxylabs DC / 무료 풀 / 자체 VPS 중 택 (Tor는 비권장으로 제외 권고)
-6. **BERT 2차 필터 도입 여부 및 모델** (4.2, 5.1, 6) — 도입 여부 결정 후 모델 선정
-7. **Detection EC2 인스턴스 타입** — t3.medium / t3.large / g4dn (GPU) 중 택 (BERT 결정과 연동)
+6. **BERT 2차 필터 도입 여부 및 모델** (4.2, 5.1, 6) — 도입 여부 결정 후 모델 선정. 도입 시 Detection EC2 t4g.medium → c6g.large 이상 상향 필요(예산 영향), GPU 인스턴스(g4dn 등)는 30만원 예산 초과로 사용 불가
+7. **NAT Gateway 운영 방식** — NAT Gateway($37/월) / NAT Instance(t4g.nano $3/월 + 운영 부담) / public subnet only(NFR7 정합 검토 필요) 중 택. SPIKE 5.0(`epics.md`)에서 결정
+
+### 10.1.a 2026-04-30 개정으로 해소된 항목 (참고)
+
+- **EC2/RDS 인스턴스 타입** → 2.1.1.a로 확정 (Crawler r6g.large 16GB / Detection t4g.medium 4GB / API t4g.large 8GB / RDS db.t4g.micro Single-AZ)
+- **PostgreSQL 메이저 버전** → 16.13 (PG17도 pgvector 호환되지만 PG16의 minor patch 누적·운영 성숙도 우선)
+- **EC2 접근 방식** → SSM Session Manager (SSH 키 미사용)
+- **S3 트래픽 라우팅** → VPC Gateway Endpoint (NAT 통과 회피, 비용 절감)
 
 ### 10.2 잔존 표기 불일치 (재확인·정리 필요)
 
