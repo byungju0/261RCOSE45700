@@ -6,3 +6,10 @@ dist
 **/coverage
 **/.cache
 **/*.tsbuildinfo
+# Secrets — 빌드 컨텍스트에 시크릿이 포함돼 image layer로 baked되는 사고 방지.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/id_rsa*
+**/id_ed25519*
