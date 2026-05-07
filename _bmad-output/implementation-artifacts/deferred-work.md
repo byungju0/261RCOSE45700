@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: Story 5-2 dev (2026-05-07)
+
+- **Flyway 10 + PostgreSQL 18.3 호환성 검증** — Spring Boot 3.5 default Flyway 10.x는 PG 17까지 공식 지원. 학생 SCP가 RDS 엔진 16/17 노출 안 해 18.3 채택. V1~V4 migration이 표준 DDL이라 작동 가능성 높지만 첫 배포 시 Flyway 실행 로그 모니터링 필수. 실패 시 `api/build.gradle`에 `dependencies { implementation 'org.flywaydb:flyway-core:12.0.0' }` 식으로 Flyway 12.x 핀 추가 (5분 작업). [Story 5.2 4차 변경 노트 참조]
+- **architecture.md 사양 backport (Story 5-2 / 5-3 ClickOps 결과 반영)** — PostgreSQL 16.13 → 18.3, EC2 ×3 사양 → 단일 EC2 t3.xlarge 16GB, NAT/SSM Session Manager 라인 → SSH `.pem` only로 일괄 갱신 필요. 현재는 Story 5.2 PIVOT 박스에 보강 형태로만 명시 → 본 표 backport는 Story 5.2 review 통과 후 별도 PR.
+- **GH repo Organization transfer 검토** — 현재 byungju0 personal repo + collaborator는 admin/Environment 권한 부여 불가능(GitHub 구조적 제약). Required reviewers / Environment 격리 / fine-grain branch protection이 필요해지면 Organization 만들고 transfer 검토. 학생 기간 종료 시점에 결정.
+- **EC2 Public IP 고정 (EIP) 검토** — 현재 stop/start 시 Public IP 변경 → GH Secret `EC2_HOST` 갱신 필요. EIP allocation은 학생 SCP 권한 미확인. 운영 부담 측정 후 도입 결정.
+- **mem_limit 실측 후 튜닝** — compose.prod.yml의 mem_limit는 16GB 환경에 맞춘 보수적 hard cap(crawler 4G / api 2G / detection 1G / dashboard 128M, 합 ~7G). Story 5.4 부하 시점에 `docker stats` 실측 후 조정. 특히 crawler Playwright 동시 세션이 늘어나면 4G 너머로 가능.
+- **자동 배포 첫 cold-start 롤백 fallback** — `/opt/app/IMAGE_TAG` 파일 없을 때 fallback이 `latest`로 떨어져 동일 broken 이미지 가능성. 첫 배포 검증 후 known-good SHA를 수동으로 IMAGE_TAG 파일에 기록하면 해소.
+
 ## Deferred from: code review of 2-4-s3-원본-아카이브-및-이미지-수집 (2026-04-29)
 
 - **S3 key length >1024 byte 미체크** [crawler/src/s3_uploader.py:25,56] — 현재 사이트 post_id로는 비현실적. 외부 site 추가 시 재검토.
@@ -152,7 +161,7 @@
 
 ## Deferred from: Story 5-3 ClickOps PIVOT (2026-05-06)
 
-학생 IAM 사용자(`ku-hys-02`)에서 Terraform 자격증명 통로 0개(IAM Access Key 차단 + CloudShell deny + IAM Role 생성 deny) 확인되어 Terraform IaC 폐기 + ClickOps 전환. 위 두 섹션의 deferred 항목들은 모두 Terraform 코드 가정 기반이라 더 이상 유효하지 않음. ClickOps 환경에서 새로 발생하는 deferred:
+학생 IAM 사용자(`<student-iam-user>`)에서 Terraform 자격증명 통로 0개(IAM Access Key 차단 + CloudShell deny + IAM Role 생성 deny) 확인되어 Terraform IaC 폐기 + ClickOps 전환. 위 두 섹션의 deferred 항목들은 모두 Terraform 코드 가정 기반이라 더 이상 유효하지 않음. ClickOps 환경에서 새로 발생하는 deferred:
 
 - **인프라 변경 추적 불가** — ClickOps는 누가 언제 무엇을 바꿨는지 코드로 남지 않음. CloudTrail organization trail이 학교 측에 활성되어 있다면 그것에 의존, 없으면 변경 이력 0. 발표 자료엔 ClickOps 시점 스크린샷으로 대체.
 - **인프라 재현성 0** — 학생 계정 자체에서 자원이 destroy되거나 학기 종료 후 계정 회수되면 동일 환경 재현 불가. 졸업 후 개인 계정에서는 git history(`b7e24d3`, `bd172d9`)의 Terraform 코드로 1회 apply 시 재현 가능.
