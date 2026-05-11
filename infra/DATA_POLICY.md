@@ -54,15 +54,15 @@
 전송 시 (in transit):
 - **S3 버킷 정책**: `aws:SecureTransport = false` deny (archive 버킷)
 - **RDS**: **Parameter group `rds.force_ssl = 1`로 TLS만 허용**, 평문 접속 거절 (publicly_accessible=true 보안 보강)
-- **EC2 운영 접근**: SSM Session Manager (TLS 강제, 외부 22 포트 SG 차단)
+- **EC2 운영 접근**: **SSH `.pem` only** (2026-05-06 Story 5-2 PIVOT — 학생 IAM이 SSM Session Manager / EC2 Instance Connect 권한 차단으로 SSM 사용 불가). 22번 인바운드 `0.0.0.0/0` + ed25519 + fail2ban (3 fail / 10분 / 24h ban)으로 안전화. host fingerprint verification은 운영 단순화 trade-off로 미적용 (commit `75e9ac5`)
 
 ## 6. 접근 통제 (PIVOT 적용)
 
 - **EC2 → S3**: IGW 경유 (Default VPC 사용). VPC Gateway Endpoint는 학생 계정 라우트 테이블 수정 권한 불확실로 미생성 (deferred-work). Crawler IAM Role의 `s3:PutObject` 권한이 archive 버킷 ARN 한정.
 - **EC2 → Secrets Manager**: Detection / API IAM Role만 GetSecretValue (특정 Secret ARN 한정). 다른 EC2 Role은 접근 불가.
-- **EC2 운영 접근**: SSM Session Manager 단독 (`AmazonSSMManagedInstanceCore` 정책 attach), 외부 22 포트 SG에서 차단.
-- **RDS 네트워크 (PIVOT)**: 학생 계정 SCP가 `publicly_accessible=true` 강제. **Default VPC 안에서 SG inbound 5432 source = {detection-sg, api-sg} ID만 허용**으로 인터넷 라우팅을 SG 단계에서 차단. 추가로 `rds.force_ssl=1`로 평문 접속 거절. 실효 보안은 `publicly_accessible=false` + SG와 동등.
-- **GitHub Actions → AWS**: OIDC + IAM Role, 장기 Access Key 미사용. trust 조건은 `repo:byungju0/261RCOSE45700:*` 매칭 + `pull_request_target` 절대 사용 금지.
+- **EC2 운영 접근**: **SSH `.pem` only** (2026-05-06 PIVOT). 단일 `.pem` 키페어 (관리자 접속 + GHA 자동 배포 공용). 22번 인바운드 `0.0.0.0/0` + defense-in-depth (ed25519 + password auth 비활성 + fail2ban). 학생 IAM이 SSM Session Manager·EC2 Instance Connect·IAM Role 생성 모두 차단으로 SSM 통로 불가.
+- **RDS 네트워크 (PIVOT)**: 학생 계정 SCP가 `publicly_accessible=true` 강제. **Default VPC 안에서 SG inbound 5432 source = {api-sg} ID만 허용**으로 인터넷 라우팅을 SG 단계에서 차단 (3차 PIVOT 단일 EC2로 회귀하면서 detection-sg 분리 불필요). 추가로 `rds.force_ssl=1`로 평문 접속 거절. 실효 보안은 `publicly_accessible=false` + SG와 동등.
+- **GitHub Actions → AWS**: **AWS API 직접 호출 통로 0개** (2026-05-06 PIVOT — OIDC + IAM Role 봉인, Access Key 발급 차단). 실 흐름: GHA → GHCR push (`GITHUB_TOKEN`) → SSH (`.pem` GH Secret) → EC2 내 `docker pull` + `docker compose`. AWS 자원 변경은 콘솔 ClickOps만 가능.
 
 ## 7. 감사 (PIVOT 적용)
 
