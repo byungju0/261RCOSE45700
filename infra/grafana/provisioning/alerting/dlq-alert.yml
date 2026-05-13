@@ -1,0 +1,81 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Tracker Alerts
+    folder: Tracker
+    interval: 1m
+    rules:
+      - uid: tracker-dlq-alert
+        title: "posts:dlq 적재 알림"
+        condition: C
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "posts:dlq에 메시지 적재됨 ({{ $value }}건)"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: redis_queue_size{queue="posts:dlq"}
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                  type: query
+              refId: C
+              type: classic_conditions
+      - uid: tracker-redis-queue-scrape-alert
+        title: "Redis 큐 메트릭 수집 실패"
+        condition: C
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 큐 메트릭 수집 실패"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: redis_queue_scrape_failure
+              refId: A
+              instant: true
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                  type: query
+              refId: C
+              type: classic_conditions

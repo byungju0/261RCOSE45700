@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: tracker
+    folder: Tracker
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

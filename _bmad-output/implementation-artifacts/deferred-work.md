@@ -190,3 +190,7 @@ Task 5 [USER] `/opt/app/secrets/*` + `/opt/app/.env` 작성에 필요한 외부 
 - **rds.force_ssl=1 parameter group** — RDS 콘솔에서 custom parameter group 만들고 적용해야 평문 접속 차단. ClickOps 절차에서 빠뜨리기 쉬움 — 데모 전 체크리스트.
 - **인스턴스 종료 후 비용 누수** — 학기 종료 후 EC2 stop이 아니라 terminate, RDS도 final snapshot 후 delete, S3도 비우고 delete. ClickOps는 자동 destroy가 없어 수동 정리 필수. 학교 사전 설정 budget 한도 초과 시 강제 종료될 수도 있음.
 - **재현 가능성을 위한 ClickOps 절차 문서화** — 콘솔에서 만든 자원의 정확한 설정값(EC2 AMI ID, SG 룰, RDS 파라미터 등)을 별도 markdown 문서로 캡처해두는 게 졸업 후 재현/발표 자료에 유리. `docs/clickops-runbook.md` 같은 형식으로 남기는 걸 권장.
+
+## Deferred from: code review of 5-1-prometheus-메트릭-수집-및-grafana-대시보드-구성 (2026-05-12)
+
+- **APScheduler max_instances skip 관측 부재** [crawler/src/scheduler/crawl_scheduler.py:229] — Story 5.1은 `EVENT_JOB_MISSED` 기반 misfire 로깅을 추가했지만, 긴 크롤 실행으로 `max_instances=1` 제한에 걸리는 skip은 별도 이벤트(`EVENT_JOB_MAX_INSTANCES`) 경로라 이번 리스너로는 잡히지 않을 수 있다. 기존 스케줄러 동작의 운영 가시성 개선 항목으로 후속 모니터링 스토리에서 검토.

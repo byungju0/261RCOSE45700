@@ -6,6 +6,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+_EXTRA_FIELDS = ("job_id", "scheduled_run_time")
+
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -16,6 +18,10 @@ class _JsonFormatter(logging.Formatter):
             "correlation_id": getattr(record, "correlation_id", None),
             "message": record.getMessage(),
         }
+        for field in _EXTRA_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                log_record[field] = value
         return json.dumps(log_record, ensure_ascii=False, default=str)
 
 
