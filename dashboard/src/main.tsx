@@ -31,19 +31,23 @@ async function enableMocking() {
 // PWA service worker registration — prod 빌드에서만 active.
 // dev에선 MSW가 fetch를 가로채야 하므로 SW 미등록 (vite.config의 devOptions.enabled=false).
 // mock 빌드(useMock)에서도 PWA SW와 MSW worker가 동일 scope(`/`)에 등록 충돌하므로 PWA SW 미등록.
-const updateSW = useMock
-  ? (_reloadPage?: boolean) => Promise.resolve()
-  : registerSW({
-      onNeedRefresh() {
-        toast.info('새 버전이 있습니다', {
-          duration: Infinity,
-          action: { label: '업데이트', onClick: () => updateSW(true) },
-        });
-      },
-      onOfflineReady() {
-        toast.success('오프라인에서도 사용 가능합니다', { duration: 3000 });
-      },
-    });
+function registerPwaUpdateNotifier() {
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      toast.info('새 버전이 있습니다', {
+        duration: Infinity,
+        action: { label: '업데이트', onClick: () => updateSW(true) },
+      });
+    },
+    onOfflineReady() {
+      toast.success('오프라인에서도 사용 가능합니다', { duration: 3000 });
+    },
+  });
+}
+
+if (!useMock) {
+  registerPwaUpdateNotifier();
+}
 
 enableMocking().then(() => {
   createRoot(document.getElementById('root')!).render(
