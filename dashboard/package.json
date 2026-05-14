@@ -62,5 +62,9 @@
     "workerDirectory": [
       "public"
     ]
+  },
+  "overrides": {
+    "source-map": "^0.7.6",
+    "glob": "^12"
   }
 }
