@@ -1,24 +1,27 @@
 # CI / Branch Protection Setup
 
-Story 1.5의 GitHub Actions 워크플로우 4종은 서브시스템별 lint/test/build를
+Story 1.5의 GitHub Actions 워크플로우 4종이 서브시스템별 lint/test/build를
 자동 실행합니다. Story 5.2가 strict required check를 `ci.yml` aggregator
 워크플로로 추가했고, 자동 배포 통로(`deploy.yml`)도 같은 reusable workflow를
-재사용합니다.
+재사용합니다. PR #42(2026-05-14)에서 frontend-only 데모용 `deploy-demo.yml`이
+추가됐고, 커밋 `515c72e`에서 crawler/detection의 중복 lint-test 로직이
+`_python-service.yml` reusable 템플릿으로 추출됐습니다.
 
 > **Story 5.2 시점 갱신**: 본 문서가 정의했던 "Story 5.2 Strict" 단계가
 > 실제 코드로 들어왔습니다. Story 1.5 시점의 deferred 항목(strict required
 > check)은 아래 [§Story 5.2 변경](#story-52-aggregator--배포-게이트-추가) 참조.
 
-## 워크플로우 4종
+## 워크플로우 4종 (+ reusable 템플릿 1개)
 
 | 파일 | Job | 트리거 경로 |
 |---|---|---|
-| `.github/workflows/crawler.yml` | `lint-test` | `crawler/**`, `shared/**` |
-| `.github/workflows/detection.yml` | `lint-test` | `detection/**`, `shared/**` |
+| `.github/workflows/_python-service.yml` | `lint-test` | `workflow_call:` only (crawler/detection이 호출) |
+| `.github/workflows/crawler.yml` | `lint-test` | `crawler/**`, `shared/**` — `_python-service.yml` thin wrapper |
+| `.github/workflows/detection.yml` | `lint-test` | `detection/**`, `shared/**` — `_python-service.yml` thin wrapper |
 | `.github/workflows/api.yml` | `lint-test` | `api/**` |
-| `.github/workflows/dashboard.yml` | `lint-test` | `dashboard/**` |
+| `.github/workflows/dashboard.yml` | `lint-test` | `dashboard/**` (pnpm 11.1.1 + Node 22 LTS) |
 
-각 워크플로우는 자기 파일(`.github/workflows/*.yml`) 변경 시에도 트리거됩니다.
+각 워크플로우는 자기 파일(`.github/workflows/*.yml`) 변경 시에도 트리거됩니다. Node 20 deprecation(2026-06) 대응으로 모든 액션 버전이 일괄 업그레이드됐습니다(`checkout@v6`, `setup-python@v6`, `setup-node@v6`, `pnpm/action-setup@v6`, `docker/setup-buildx-action@v4`, `docker/login-action@v4`, `docker/build-push-action@v7`).
 
 ## Branch Protection 절차 (Story 5.2 Strict)
 
@@ -52,9 +55,11 @@ Story 1.5의 GitHub Actions 워크플로우 4종은 서브시스템별 lint/test
 
 | 워크플로우 | 트리거 | 역할 |
 |---|---|---|
+| `_python-service.yml` | `workflow_call:` only | crawler/detection 공통 lint-test 정의 (`service:` 입력 분기) |
 | `crawler.yml` / `detection.yml` / `api.yml` / `dashboard.yml` | path filter (PR/push:main) **+** `workflow_call` | 서브시스템별 빠른 lint/test (path 변경 시) |
 | `ci.yml` | PR + push:main, **no path filter** | 4개 reusable 호출 + `aggregator` strict gate |
 | `deploy.yml` | push:main + `workflow_dispatch` | 같은 reusable 4종 호출 후 GHCR 빌드 + EC2 배포 |
+| `deploy-demo.yml` | `workflow_dispatch` only | dashboard만 `VITE_USE_MOCK=true`로 빌드 → GHCR `:demo-*` → EC2 Caddy + dashboard 2컨테이너 (`tracker.o-r.kr`, Let's Encrypt 자동 발급) |
 
 main 머지 1회당 reusable workflow 4종이 두 번 실행되는 비용이 있지만(`ci.yml`
 + `deploy.yml`), 배포 안전성 우선으로 수용합니다.
