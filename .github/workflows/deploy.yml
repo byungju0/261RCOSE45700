@@ -212,6 +212,27 @@ jobs:
 
             cd /opt/app
 
+            # 누락 시 컨테이너가 placeholder default(VARCO DNS / REDIS localhost)로
+            # startup → healthcheck fail → 자동 롤백. 비싼 pull/up 전에 차단.
+            REQUIRED_FILES=(
+              /opt/app/.env
+              /opt/app/secrets/varco_api_key
+              /opt/app/secrets/db_password
+              /opt/app/compose.prod.yml
+            )
+            for f in "${REQUIRED_FILES[@]}"; do
+              if [ ! -s "$f" ]; then
+                $ECHO "::error::Required file missing or empty: $f"
+                exit 6
+              fi
+            done
+
+            # IMAGE_TAG 비면 compose가 :latest로 fallback해 의도와 다른 이미지 배포됨.
+            if [ -z "${IMAGE_TAG:-}" ] || [ -z "${REGISTRY_PATH:-}" ]; then
+              $ECHO "::error::IMAGE_TAG or REGISTRY_PATH empty at deploy time"
+              exit 7
+            fi
+
             # GHCR login — 명시적으로 fatal. 캐시된 자격증명에 의존하지 않는다.
             if ! printf '%s' "$GHCR_TOKEN" | "$DOCKER" login ghcr.io -u "$GHCR_USER" --password-stdin; then
               $ECHO "::error::GHCR login failed"
@@ -258,6 +279,14 @@ jobs:
               done
               if [ "$ALL_OK" = "1" ]; then break; fi
             done
+
+            if [ "$ALL_OK" = "1" ]; then
+              # actuator readiness는 ping만 — DB+Redis+JPA 풀스택은 /api/stats가 처음 친다.
+              if ! curl -fsS -m 5 http://127.0.0.1:8080/api/stats >/dev/null; then
+                $ECHO "::error::Smoke test failed — /api/stats not 200 within 5s after all healthy"
+                ALL_OK=0
+              fi
+            fi
 
             if [ "$ALL_OK" = "1" ]; then
               # IMAGE_TAG 마커는 "달라졌을 때만" 갱신 — 같은 SHA 재배포가
