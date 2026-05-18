@@ -4,9 +4,6 @@ import { MOCK_DETECTIONS, buildStatsResponse, getDetectionById } from './data';
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
-// 수동 트리거 시점 기록 — since=triggered 필터링용.
-let lastTriggerAt: number | null = null;
-
 export const handlers = [
   // GET /stats?period=weekly|monthly
   http.get(`${baseUrl}/stats`, ({ request }) => {
@@ -36,7 +33,6 @@ export const handlers = [
     const site = url.searchParams.get('site');
     const type = url.searchParams.get('type');
     const lang = url.searchParams.get('lang');
-    const since = url.searchParams.get('since');
     const page = Number(url.searchParams.get('page') ?? '0');
     const size = Number(url.searchParams.get('size') ?? '20');
 
@@ -53,11 +49,6 @@ export const handlers = [
     }
     if (lang) {
       filtered = filtered.filter((d) => d.language === lang);
-    }
-    if (since === 'triggered' && lastTriggerAt != null) {
-      filtered = filtered.filter(
-        (d) => new Date(d.detectedAt).getTime() >= lastTriggerAt!,
-      );
     }
 
     const totalElements = filtered.length;
@@ -95,14 +86,6 @@ export const handlers = [
 
   // POST /crawl/trigger
   http.post(`${baseUrl}/crawl/trigger`, () => {
-    lastTriggerAt = Date.now();
-    // 데모 환경: since=triggered 필터가 빈 결과로 안 보이게, 가장 최근 3건의
-    // detectedAt을 현재 시각으로 덮어씀. 실배포 백엔드에서는 신규 크롤 결과가
-    // 자연스럽게 detectedAt > lastTriggerAt 조건을 만족.
-    const now = new Date(lastTriggerAt).toISOString();
-    MOCK_DETECTIONS.slice(0, 3).forEach((d) => {
-      d.detectedAt = now;
-    });
     const response: CrawlTriggerResponse = {
       status: 'triggered',
       estimatedMinutes: 3,

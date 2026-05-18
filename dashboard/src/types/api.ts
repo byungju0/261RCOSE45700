@@ -71,8 +71,6 @@ export interface DetectionFilter {
   site?: string;
   type?: DetectionType;
   lang?: Language;
-  /** Journey 2 — 수동 트리거 후 새로 들어온 탐지만 */
-  since?: 'triggered';
   page?: number;
   size?: number;
 }

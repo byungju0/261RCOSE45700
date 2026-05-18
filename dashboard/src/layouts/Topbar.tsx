@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ManualCrawlButton } from '@/components/tracker/ManualCrawlButton';
-import { NewDetectionsBadge } from '@/components/tracker/NewDetectionsBadge';
 
 type Theme = 'light' | 'dark';
 
@@ -28,8 +27,6 @@ interface TopbarProps {
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const [theme, setTheme] = useState<Theme>(readInitialTheme);
-  const [triggerAt, setTriggerAt] = useState<number | null>(null);
-  const dismissBadge = useCallback(() => setTriggerAt(null), []);
 
   useEffect(() => {
     // 변경 없는 쓰기 차단 — StrictMode 이중 effect / 초기 mount no-op 모두 흡수
@@ -69,10 +66,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         <Menu />
       </Button>
       <div className="ml-auto flex items-center gap-2.5">
-        {triggerAt !== null && (
-          <NewDetectionsBadge triggerAt={triggerAt} onDismiss={dismissBadge} />
-        )}
-        <ManualCrawlButton onTriggerSuccess={() => setTriggerAt(Date.now())} />
+        <ManualCrawlButton />
         <ThemeToggle theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
       </div>
     </div>

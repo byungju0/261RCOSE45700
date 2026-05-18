@@ -15,13 +15,8 @@ import { useCrawlTriggerMutation } from '@/api/detections';
 import { Kbd } from '@/components/ui/kbd';
 import { useShortcut } from '@/lib/shortcuts';
 
-interface ManualCrawlButtonProps {
-  /** Trigger 성공 직후 호출. */
-  onTriggerSuccess?: () => void;
-}
-
 /** Journey 2 (긴급 대응) 수동 크롤링 트리거 — 확인 Dialog + g+t 단축키. */
-export function ManualCrawlButton({ onTriggerSuccess }: ManualCrawlButtonProps = {}) {
+export function ManualCrawlButton() {
   const [open, setOpen] = useState(false);
   const mutation = useCrawlTriggerMutation();
 
@@ -30,9 +25,8 @@ export function ManualCrawlButton({ onTriggerSuccess }: ManualCrawlButtonProps =
   const handleConfirm = async () => {
     try {
       const result = await mutation.mutateAsync();
-      onTriggerSuccess?.();
       toast.success('수동 크롤링 트리거 완료', {
-        description: `예상 ${result.estimatedMinutes}분 소요. 완료 시 자동으로 알림됩니다.`,
+        description: `예상 ${result.estimatedMinutes}분 소요. 60초 폴링으로 새 탐지가 화면에 반영됩니다.`,
         duration: 3000,
       });
       setOpen(false);
@@ -71,7 +65,8 @@ export function ManualCrawlButton({ onTriggerSuccess }: ManualCrawlButtonProps =
           <DialogTitle>지금 크롤링하시겠습니까?</DialogTitle>
           <DialogDescription>
             모든 등록된 사이트에 대해 즉시 크롤링을 실행합니다. 일반적으로 3분
-            내외 소요되며, 완료되면 새로 들어온 탐지가 헤더에 알림됩니다.
+            내외 소요되며, 완료되면 목록·통계가 다음 폴링 주기(최대 60초)에
+            자동 갱신됩니다.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

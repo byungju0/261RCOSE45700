@@ -14,9 +14,6 @@ import {
 } from '@/lib/statsView';
 import { formatRelativeTime } from '@/lib/time';
 
-const NEXT_CRAWL_LABEL = '42분 후';
-const LAST_CRAWL_LABEL = '18분 전';
-
 export function DashboardPage() {
   // dataUpdatedAt이 60s polling마다 갱신 → TanStack Query subscription이 자동 re-render
   // 유발. ticker 불필요. 자정 롤오버도 다음 polling tick(<60s)에 자연 반영.
@@ -147,20 +144,6 @@ function Hero({ count, delta, freshness }: HeroProps) {
           데이터 갱신{' '}
           <span className="font-medium" style={{ color: 'var(--fg)' }}>
             {freshness}
-          </span>
-        </span>
-        <Sep />
-        <span>
-          마지막 크롤{' '}
-          <span className="font-medium" style={{ color: 'var(--fg)' }}>
-            {LAST_CRAWL_LABEL}
-          </span>
-        </span>
-        <Sep />
-        <span>
-          다음 예정{' '}
-          <span className="font-medium" style={{ color: 'var(--fg)' }}>
-            {NEXT_CRAWL_LABEL}
           </span>
         </span>
       </div>

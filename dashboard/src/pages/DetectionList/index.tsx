@@ -273,12 +273,6 @@ function DesktopFilterBar({ filter, onChange, onReset, active }: FilterBarProps)
         </SelectContent>
       </Select>
 
-      {filter.since && (
-        <span className="bg-warning/10 text-warning rounded-full px-3 py-1 text-xs font-medium">
-          새로 들어온 탐지만
-        </span>
-      )}
-
       {active && (
         <Button
           variant="ghost"
@@ -446,11 +440,6 @@ function MobileFilterBar({ filter, onChange, onReset, active }: FilterBarProps) 
           label={langLabel}
           onClear={() => onChange({ lang: undefined })}
         />
-      )}
-      {filter.since && (
-        <span className="bg-warning/10 text-warning rounded-full px-2.5 py-1 text-xs font-medium">
-          새로 들어온 탐지만
-        </span>
       )}
     </div>
   );

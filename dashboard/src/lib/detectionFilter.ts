@@ -7,7 +7,6 @@ export function detectionFilterToParams(filter: DetectionFilter): URLSearchParam
   if (filter.site) params.set('site', filter.site);
   if (filter.type) params.set('type', filter.type);
   if (filter.lang) params.set('lang', filter.lang);
-  if (filter.since) params.set('since', filter.since);
   if (filter.page !== undefined && filter.page > 0) {
     params.set('page', String(filter.page));
   }
@@ -15,7 +14,7 @@ export function detectionFilterToParams(filter: DetectionFilter): URLSearchParam
   return params;
 }
 
-/** date / site / type / lang / since 중 하나라도 설정되어 있으면 active. */
+/** date / site / type / lang 중 하나라도 설정되어 있으면 active. */
 export function isFilterActive(filter: DetectionFilter): boolean {
-  return !!(filter.date || filter.site || filter.type || filter.lang || filter.since);
+  return !!(filter.date || filter.site || filter.type || filter.lang);
 }

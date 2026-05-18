@@ -12,13 +12,11 @@ describe('detectionFilterToParams', () => {
       site: 'tailstar',
       type: '핵_배포',
       lang: 'zh-CN',
-      since: 'triggered',
     });
     expect(params.get('date')).toBe('2026-05-12');
     expect(params.get('site')).toBe('tailstar');
     expect(params.get('type')).toBe('핵_배포');
     expect(params.get('lang')).toBe('zh-CN');
-    expect(params.get('since')).toBe('triggered');
   });
 
   it('drops page when 0 (default)', () => {
@@ -38,6 +36,5 @@ describe('isFilterActive', () => {
     expect(isFilterActive({ site: 'tailstar' })).toBe(true);
     expect(isFilterActive({ type: '핵_배포' })).toBe(true);
     expect(isFilterActive({ lang: 'ko' })).toBe(true);
-    expect(isFilterActive({ since: 'triggered' })).toBe(true);
   });
 });
