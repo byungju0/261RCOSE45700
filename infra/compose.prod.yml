@@ -160,8 +160,10 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      # Caddy 자체 admin endpoint(2019) 는 컨테이너 내부 only. 외부 노출 없이 wget 으로 :80 응답 확인.
-      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://localhost:80/"]
+      # Caddyfile 의 site block (tracker.o-r.kr) 는 host header 매칭 필수.
+      # localhost 로 wget 하면 match 안 돼 응답 없음 → unhealthy 오판.
+      # 단순 TCP LISTEN 만 확인 (busybox nc). 80 살아있으면 caddy 도 살아있음.
+      test: ["CMD", "nc", "-z", "localhost", "80"]
       interval: 30s
       timeout: 5s
       retries: 3
