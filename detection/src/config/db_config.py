@@ -30,6 +30,7 @@ def _build_conninfo() -> str:
         user=os.environ.get("DB_USER", "tracker_user"),
         password=password,
         sslmode=os.environ.get("DB_SSL_MODE", "disable"),
+        client_encoding="utf8",  # psycopg3 str→bytes 인코딩 명시 (RDS default가 SQL_ASCII일 때 대비)
     )
 
 

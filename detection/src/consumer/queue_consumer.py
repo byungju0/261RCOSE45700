@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import traceback
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -70,7 +71,8 @@ class QueueConsumer:
             )
         except Exception as exc:
             _logger.error(
-                "메시지 처리 실패 — posts:processing 잔류: %s", exc,
+                "메시지 처리 실패 — posts:processing 잔류: %s\ntraceback:\n%s",
+                exc, traceback.format_exc(),
                 extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
             )
             # LREM 호출하지 않음 — Watchdog이 stale 감지 후 재투입
