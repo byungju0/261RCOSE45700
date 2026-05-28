@@ -37,6 +37,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withCorrelationId(pd, request);
     }
 
+    @ExceptionHandler(NotificationResourceNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleNotificationResourceNotFound(
+            NotificationResourceNotFoundException ex,
+            HttpServletRequest request) {
+        var pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Notification Resource Not Found");
+        pd.setProperty("errorCode", "NOTIFICATION_RESOURCE_NOT_FOUND");
+        return withCorrelationId(pd, request);
+    }
+
     @ExceptionHandler(InvalidFilterParamException.class)
     public ResponseEntity<ProblemDetail> handleInvalidFilterParam(
             InvalidFilterParamException ex,
