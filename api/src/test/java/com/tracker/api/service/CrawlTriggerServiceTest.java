@@ -1,11 +1,19 @@
 package com.tracker.api.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.redis.core.HashOperations;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import java.time.Duration;
+import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,22 +23,63 @@ class CrawlTriggerServiceTest {
     @Mock
     StringRedisTemplate stringRedisTemplate;
 
+    @Mock
+    HashOperations<String, Object, Object> hashOperations;
+
     @Test
-    void trigger_publishesCorrelationIdToCrawlTriggerChannel() {
-        var service = new CrawlTriggerService(stringRedisTemplate);
+    void trigger_initializesJobAndPublishesJsonCommand() {
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        var service = new CrawlTriggerService(stringRedisTemplate, new ObjectMapper());
 
-        service.trigger("cid-1234");
+        String jobId = service.trigger("cid-1234");
 
-        verify(stringRedisTemplate).convertAndSend("crawl:trigger", "cid-1234");
+        assertThat(jobId).isNotBlank();
+        verify(hashOperations).putAll(eq("crawl:jobs:" + jobId), argThat(map ->
+                jobId.equals(map.get("jobId"))
+                        && "queued".equals(map.get("status"))
+                        && "0".equals(map.get("percent"))));
+        verify(stringRedisTemplate).expire("crawl:jobs:" + jobId, Duration.ofHours(6));
+        verify(stringRedisTemplate).convertAndSend(eq("crawl:trigger"), argThat(payload ->
+                payload.toString().contains("\"jobId\":\"" + jobId + "\"")
+                        && payload.toString().contains("\"correlationId\":\"cid-1234\"")));
     }
 
     @Test
     void trigger_acceptsZeroSubscribersAsPublishCommandAccepted() {
-        var service = new CrawlTriggerService(stringRedisTemplate);
-        when(stringRedisTemplate.convertAndSend("crawl:trigger", "cid-0000")).thenReturn(0L);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(stringRedisTemplate.convertAndSend(eq("crawl:trigger"), anyString())).thenReturn(0L);
+        var service = new CrawlTriggerService(stringRedisTemplate, new ObjectMapper());
 
         service.trigger("cid-0000");
 
-        verify(stringRedisTemplate).convertAndSend("crawl:trigger", "cid-0000");
+        verify(stringRedisTemplate).convertAndSend(eq("crawl:trigger"), anyString());
+    }
+
+    @Test
+    void getStatus_readsJobHash() {
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(hashOperations.entries("crawl:jobs:job-1234")).thenReturn(Map.ofEntries(
+                Map.entry("jobId", "job-1234"),
+                Map.entry("status", "running"),
+                Map.entry("totalSites", "8"),
+                Map.entry("completedSites", "3"),
+                Map.entry("percent", "38"),
+                Map.entry("currentSite", "bahamut"),
+                Map.entry("message", "bahamut 처리 중"),
+                Map.entry("failedSites", "[\"tieba\"]"),
+                Map.entry("requestedAt", "2026-05-28T00:00:00Z"),
+                Map.entry("startedAt", "2026-05-28T00:00:01Z"),
+                Map.entry("updatedAt", "2026-05-28T00:01:00Z"),
+                Map.entry("finishedAt", "")
+        ));
+        var service = new CrawlTriggerService(stringRedisTemplate, new ObjectMapper());
+
+        var status = service.getStatus("job-1234");
+
+        assertThat(status.status()).isEqualTo("running");
+        assertThat(status.totalSites()).isEqualTo(8);
+        assertThat(status.completedSites()).isEqualTo(3);
+        assertThat(status.percent()).isEqualTo(38);
+        assertThat(status.failedSites()).containsExactly("tieba");
     }
 }

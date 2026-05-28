@@ -82,8 +82,27 @@ export interface DetectionFilter {
 }
 
 export interface CrawlTriggerResponse {
+  jobId: string;
   status: 'triggered' | 'in_progress';
   estimatedMinutes: number;
+  statusUrl: string;
+}
+
+export type CrawlJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+
+export interface CrawlJobStatusResponse {
+  jobId: string;
+  status: CrawlJobStatus;
+  totalSites: number;
+  completedSites: number;
+  percent: number;
+  currentSite: string;
+  message: string;
+  failedSites: string[];
+  requestedAt: string;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt: string;
 }
 
 export type StatsPeriod = 'weekly' | 'monthly';

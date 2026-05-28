@@ -3,6 +3,7 @@ package com.tracker.api.controller;
 import com.tracker.api.dto.DetectionListResponse;
 import com.tracker.api.dto.DetectionResponse;
 import com.tracker.api.exception.DetectionNotFoundException;
+import com.tracker.api.dto.CrawlJobStatusResponse;
 import com.tracker.api.service.CrawlTriggerService;
 import com.tracker.api.service.DetectionService;
 import org.junit.jupiter.api.Test;
@@ -142,14 +143,35 @@ class DetectionControllerTest {
 
     @Test
     void postCrawlTrigger_returns202() throws Exception {
+        when(crawlTriggerService.trigger("test-cid-1234")).thenReturn("job-1234");
+
         mockMvc.perform(post("/api/crawl/trigger")
                         .header("X-Correlation-ID", "test-cid-1234"))
                 .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("job-1234"))
                 .andExpect(jsonPath("$.status").value("triggered"))
                 .andExpect(jsonPath("$.estimatedMinutes").value(3))
+                .andExpect(jsonPath("$.statusUrl").value("/api/crawl/jobs/job-1234"))
                 .andExpect(header().string("X-Correlation-ID", "test-cid-1234"));
 
         verify(crawlTriggerService).trigger("test-cid-1234");
+    }
+
+    @Test
+    void getCrawlJobStatus_returnsOk() throws Exception {
+        when(crawlTriggerService.getStatus("job-1234")).thenReturn(new CrawlJobStatusResponse(
+                "job-1234", "running", 8, 3, 38, "bahamut",
+                "bahamut 처리 중", List.of(), "2026-05-28T00:00:00Z",
+                "2026-05-28T00:00:01Z", "2026-05-28T00:01:00Z", ""));
+
+        mockMvc.perform(get("/api/crawl/jobs/job-1234"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobId").value("job-1234"))
+                .andExpect(jsonPath("$.status").value("running"))
+                .andExpect(jsonPath("$.totalSites").value(8))
+                .andExpect(jsonPath("$.completedSites").value(3))
+                .andExpect(jsonPath("$.percent").value(38))
+                .andExpect(jsonPath("$.currentSite").value("bahamut"));
     }
 
     @Test

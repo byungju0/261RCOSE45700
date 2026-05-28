@@ -27,6 +27,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return withCorrelationId(pd, request);
     }
 
+    @ExceptionHandler(CrawlJobNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleCrawlJobNotFound(
+            CrawlJobNotFoundException ex,
+            HttpServletRequest request) {
+        var pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Crawl Job Not Found");
+        pd.setProperty("errorCode", "CRAWL_JOB_NOT_FOUND");
+        return withCorrelationId(pd, request);
+    }
+
     @ExceptionHandler(InvalidFilterParamException.class)
     public ResponseEntity<ProblemDetail> handleInvalidFilterParam(
             InvalidFilterParamException ex,

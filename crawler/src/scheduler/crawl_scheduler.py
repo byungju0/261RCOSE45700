@@ -20,6 +20,10 @@ from crawler.src.preprocessor.dedup_checker import DedupChecker
 from crawler.src.preprocessor.serializer import to_crawl_event
 from crawler.src.preprocessor.url_dedup_checker import UrlDedupChecker
 from crawler.src.queue.redis_publisher import RedisPublisher
+from crawler.src.scheduler.crawl_job_progress import (
+    CrawlJobProgressStore,
+    CrawlTriggerCommand,
+)
 from crawler.src.scheduler.trigger_listener import TriggerListener
 from crawler.src.sites.registry import get_enabled_sites
 from crawler.src.storage import PostStorage
@@ -187,6 +191,7 @@ class CrawlPipeline:
         dedup: DedupChecker,
         publisher: RedisPublisher,
         url_dedup: UrlDedupChecker | None = None,
+        progress_store: CrawlJobProgressStore | None = None,
     ) -> None:
         self._crawler = crawler
         self._storage = storage
@@ -194,10 +199,14 @@ class CrawlPipeline:
         self._publisher = publisher
         # 옵션. None 이면 cross-run URL 체크 안 함 (단위 테스트 호환).
         self._url_dedup = url_dedup
+        self._progress_store = progress_store
 
-    async def run(self) -> PipelineStats:
+    async def run(self, *, job_id: str = "") -> PipelineStats:
         stats = PipelineStats()
         sites = get_enabled_sites()
+        total_sites = len(sites)
+        if self._progress_store is not None and job_id:
+            self._progress_store.mark_running(job_id, total_sites=total_sites)
         _logger.info(
             "파이프라인 시작: 활성 사이트 %d개 (site_delay=%.1fs board_delay=%.1fs)",
             len(sites), _INTER_SITE_DELAY_SECONDS, _INTER_BOARD_DELAY_SECONDS,
@@ -206,6 +215,13 @@ class CrawlPipeline:
 
         site_items = list(sites.items())
         for site_idx, (site_id, site) in enumerate(site_items):
+            if self._progress_store is not None and job_id:
+                self._progress_store.mark_site_running(
+                    job_id,
+                    site_id=site_id,
+                    completed_sites=site_idx,
+                    total_sites=total_sites,
+                )
             if site_idx > 0:
                 # 사이트 간 휴식 — anti-bot rate limit 회피.
                 delay = _jittered(_INTER_SITE_DELAY_SECONDS)
@@ -352,6 +368,14 @@ class CrawlPipeline:
                                 exc_info=True,
                             )
 
+            if self._progress_store is not None and job_id:
+                self._progress_store.mark_site_complete(
+                    job_id,
+                    site_id=site_id,
+                    completed_sites=site_idx + 1,
+                    total_sites=total_sites,
+                )
+
         _logger.info(
             "파이프라인 완료: 시도=%d 큐=%d url중복=%d 본문중복=%d 빈=%d 공지=%d 차단=%d 미확인=%d 실패=%d",
             stats.attempted,
@@ -378,28 +402,46 @@ class CrawlScheduler:
 
         # 같은 ZSET 을 파이프라인과 cleanup 잡이 공유해야 하므로 인스턴스 분리 보관.
         self._url_dedup = UrlDedupChecker(dedup_client)
+        self._progress_store = CrawlJobProgressStore(mq_client)
         self._pipeline = CrawlPipeline(
             crawler=Crawl4AICrawler(headless=True, output_dir="output/_tmp"),
             storage=PostStorage(),
             dedup=DedupChecker(dedup_client),
             publisher=RedisPublisher(mq_client),
             url_dedup=self._url_dedup,
+            progress_store=self._progress_store,
         )
         # scheduled run + 수동 trigger 동시 실행 방지
         self._run_lock = asyncio.Lock()
         self._trigger_listener = TriggerListener(redis_url, self._run_locked)
         self._scheduler = AsyncIOScheduler()
 
-    async def _run_locked(self) -> None:
+    async def _run_locked(self, command: CrawlTriggerCommand | None = None) -> None:
         # APScheduler 잡 + 수동 trigger 양쪽에서 호출되는 단일 진입점.
+        job_id = command.job_id if command is not None else ""
         if self._run_lock.locked():
+            if job_id:
+                self._progress_store.mark_skipped(
+                    job_id,
+                    message="이미 다른 크롤링이 실행 중입니다.",
+                )
             _logger.info(
                 "이미 실행 중 — 이번 호출 스킵",
-                extra={"correlation_id": "", "service": _SERVICE_NAME},
+                extra={
+                    "correlation_id": command.correlation_id if command is not None else "",
+                    "service": _SERVICE_NAME,
+                },
             )
             return
         async with self._run_lock:
-            await self._pipeline.run()
+            try:
+                await self._pipeline.run(job_id=job_id)
+                if job_id:
+                    self._progress_store.mark_succeeded(job_id)
+            except Exception as exc:
+                if job_id:
+                    self._progress_store.mark_failed(job_id, message=str(exc))
+                raise
 
     async def _cleanup_url_dedup_job(self) -> None:
         # sync redis 호출을 thread 로 오프로드 — 다른 async 잡(crawl_pipeline) 이벤트 루프 블락 방지.

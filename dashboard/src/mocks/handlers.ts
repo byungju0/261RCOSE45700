@@ -1,5 +1,9 @@
 import { http, HttpResponse } from 'msw';
-import type { CrawlTriggerResponse, DetectionListResponse } from '@/types/api';
+import type {
+  CrawlJobStatusResponse,
+  CrawlTriggerResponse,
+  DetectionListResponse,
+} from '@/types/api';
 import { MOCK_DETECTIONS, buildStatsResponse, getDetectionById } from './data';
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api';
@@ -87,9 +91,30 @@ export const handlers = [
   // POST /crawl/trigger
   http.post(`${baseUrl}/crawl/trigger`, () => {
     const response: CrawlTriggerResponse = {
+      jobId: 'mock-crawl-job',
       status: 'triggered',
       estimatedMinutes: 3,
+      statusUrl: '/api/crawl/jobs/mock-crawl-job',
     };
     return HttpResponse.json(response, { status: 202 });
+  }),
+
+  // GET /crawl/jobs/:jobId
+  http.get(`${baseUrl}/crawl/jobs/:jobId`, ({ params }) => {
+    const response: CrawlJobStatusResponse = {
+      jobId: String(params.jobId),
+      status: 'running',
+      totalSites: 8,
+      completedSites: 3,
+      percent: 38,
+      currentSite: 'bahamut',
+      message: 'bahamut 처리 중',
+      failedSites: [],
+      requestedAt: '2026-05-28T00:00:00Z',
+      startedAt: '2026-05-28T00:00:01Z',
+      updatedAt: '2026-05-28T00:01:00Z',
+      finishedAt: '',
+    };
+    return HttpResponse.json(response);
   }),
 ];

@@ -10,6 +10,7 @@ import { POLLING_QUERY_OPTIONS } from './queryDefaults';
 import { statsQueries } from './stats';
 import { detectionFilterToParams } from '@/lib/detectionFilter';
 import type {
+  CrawlJobStatusResponse,
   CrawlTriggerResponse,
   Detection,
   DetectionFilter,
@@ -74,6 +75,13 @@ async function triggerCrawl(): Promise<CrawlTriggerResponse> {
   return response.data;
 }
 
+async function fetchCrawlJobStatus(jobId: string): Promise<CrawlJobStatusResponse> {
+  const response = await apiClient.get<CrawlJobStatusResponse>(
+    `/crawl/jobs/${jobId}`,
+  );
+  return response.data;
+}
+
 export function useCrawlTriggerMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -83,5 +91,15 @@ export function useCrawlTriggerMutation() {
       queryClient.invalidateQueries({ queryKey: detectionQueries.all() });
       queryClient.invalidateQueries({ queryKey: statsQueries.all() });
     },
+  });
+}
+
+export function useCrawlJobStatusQuery(jobId: string | null) {
+  return useQuery({
+    queryKey: ['crawl', 'job', jobId],
+    queryFn: () => fetchCrawlJobStatus(jobId ?? ''),
+    enabled: Boolean(jobId),
+    refetchInterval: 2_000,
+    staleTime: 1_000,
   });
 }

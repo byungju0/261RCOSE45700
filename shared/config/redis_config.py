@@ -14,3 +14,4 @@ REDIS_KEY_SEEN_URLS: str = "posts:seen_urls"
 REDIS_KEY_LLM_RATE_LIMIT_CLASSIFY: str = "llm:rate_limit:classify"
 
 REDIS_CHANNEL_CRAWL_TRIGGER: str = "crawl:trigger"
+REDIS_KEY_CRAWL_JOB_PREFIX: str = "crawl:jobs:"
