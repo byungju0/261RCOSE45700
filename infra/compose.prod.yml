@@ -42,11 +42,8 @@ services:
     container_name: tracker-redis
     # CVE-2025-49844 (CVSS 10.0): requirepass 없으면 NOAUTH Lua RCE 가능.
     # 호스트 6379 미노출(docker network 내부)이라도 requirepass 필수 (컨테이너 탈출 시 대비).
-    # secret 파일을 shell로 읽어 requirepass에 주입 — env var 평문 노출 없음.
-    command: >
-      sh -c "redis-server --appendonly yes
-             --requirepass \"$$(cat /run/secrets/redis_password)\"
-             --maxmemory 1gb --maxmemory-policy allkeys-lru"
+    # 리스트 형식 필수 — 문자열 형식은 word-split으로 sh -c 구조가 깨짐.
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass $(cat /run/secrets/redis_password) --maxmemory 1gb --maxmemory-policy allkeys-lru"]
     secrets:
       - redis_password
     volumes:
