@@ -54,7 +54,7 @@ export function ConfidenceBadge({
   return (
     <span
       role="status"
-      aria-label={`신뢰도 ${ariaScore} (${SEVERITY_LABEL[level]})`}
+      aria-label={`위험도 ${ariaScore} (${SEVERITY_LABEL[level]})`}
       className={cn(
         'inline-flex size-11 flex-col items-center justify-center gap-[3px] rounded-md font-mono leading-none',
         LEVEL_CHIP[level],

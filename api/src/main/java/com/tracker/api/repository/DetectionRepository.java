@@ -16,6 +16,7 @@ public interface DetectionRepository extends JpaRepository<Detection, Long> {
             JOIN FETCH d.post p
             JOIN FETCH p.source s
             WHERE d.confidence >= 0.70
+            AND d.isIllegal = true
             AND (cast(:fromTime as Instant) IS NULL OR d.detectedAt >= :fromTime)
             AND (cast(:toTime   as Instant) IS NULL OR d.detectedAt <  :toTime)
             AND (cast(:site     as String)  IS NULL OR s.siteName = :site)
@@ -26,6 +27,7 @@ public interface DetectionRepository extends JpaRepository<Detection, Long> {
             SELECT COUNT(d) FROM Detection d
             JOIN d.post p JOIN p.source s
             WHERE d.confidence >= 0.70
+            AND d.isIllegal = true
             AND (cast(:fromTime as Instant) IS NULL OR d.detectedAt >= :fromTime)
             AND (cast(:toTime   as Instant) IS NULL OR d.detectedAt <  :toTime)
             AND (cast(:site     as String)  IS NULL OR s.siteName = :site)

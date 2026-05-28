@@ -148,7 +148,7 @@ export function DetectionListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>신뢰도</TableHead>
+                  <TableHead>위험도</TableHead>
                   <TableHead>유형</TableHead>
                   <TableHead>사이트</TableHead>
                   <TableHead>본문 미리보기</TableHead>
