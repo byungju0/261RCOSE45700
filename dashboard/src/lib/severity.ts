@@ -30,8 +30,8 @@ export function severityOf(score: number): Severity {
 }
 
 export function severityOfTier(tier: Tier | string | null | undefined): Severity {
-  if (tier === 'T1' || tier === 'T2') return 'high';
-  if (tier === 'T3') return 'medium';
+  if (tier === 'T1') return 'high';
+  if (tier === 'T2') return 'medium';
   return 'low';
 }
 

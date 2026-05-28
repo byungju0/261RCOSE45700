@@ -31,10 +31,10 @@ describe('severityOf', () => {
 });
 
 describe('severityOfTier', () => {
-  it('maps T1/T2 to high, T3 to medium, and T4 to low', () => {
+  it('maps T1 to high, T2 to medium, T3/T4 to low', () => {
     expect(severityOfTier('T1')).toBe('high');
-    expect(severityOfTier('T2')).toBe('high');
-    expect(severityOfTier('T3')).toBe('medium');
+    expect(severityOfTier('T2')).toBe('medium');
+    expect(severityOfTier('T3')).toBe('low');
     expect(severityOfTier('T4')).toBe('low');
   });
 
@@ -50,7 +50,7 @@ describe('severityOfTier', () => {
 
   it('uses tier over confidence when both present', () => {
     expect(severityOfDetection({ tier: 'T1', confidence: 0.1, isIllegal: true })).toBe('high');
-    expect(severityOfDetection({ tier: 'T3', confidence: 0.99, isIllegal: true })).toBe('medium');
+    expect(severityOfDetection({ tier: 'T3', confidence: 0.99, isIllegal: true })).toBe('low');
   });
 });
 
