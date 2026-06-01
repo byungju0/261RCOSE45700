@@ -52,7 +52,9 @@ class DetectionPipeline:
         images: list[str] = list(event.s3_image_paths or event.image_urls or [])
 
         response = self._retry_handler.execute_with_retry(
-            lambda: self._classifier.classify(event.raw_text, images=images),
+            lambda: self._classifier.classify(
+                event.raw_text, images=images, source_id=event.source_id
+            ),
             message=message,
             post_id=event.post_id,
             correlation_id=event.correlation_id,

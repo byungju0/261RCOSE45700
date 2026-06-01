@@ -49,9 +49,11 @@ class LLMClassifier:
         parts = self._model_version.split(":", 2)
         return parts[1] if len(parts) >= 2 else self._model_version
 
-    def classify(self, text: str, images: list[str] | None = None) -> LLMResponse:
+    def classify(
+        self, text: str, images: list[str] | None = None, source_id: str | None = None
+    ) -> LLMResponse:
         self._bucket.acquire()
-        result = self._llm.classify(text, images)
+        result = self._llm.classify(text, images, source_id=source_id)
 
         if result.type not in ALLOWED_DETECTION_TYPES:
             raise ValueError(f"invalid type: {result.type}")

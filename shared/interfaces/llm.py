@@ -56,4 +56,6 @@ class LLMInterface(Protocol):
         ValueError: 응답 스키마 위반(type enum / confidence 범위 등) — non-retryable.
     """
 
-    def classify(self, text: str, images: list[str] | None = None) -> LLMResponse: ...
+    def classify(
+        self, text: str, images: list[str] | None = None, source_id: str | None = None
+    ) -> LLMResponse: ...
