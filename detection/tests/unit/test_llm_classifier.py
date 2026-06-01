@@ -86,4 +86,4 @@ def test_images_passed_through_to_llm() -> None:
 
     classifier.classify("핵 팝니다", images=["s3://bucket/x.jpg"])
 
-    llm.classify.assert_called_once_with("핵 팝니다", ["s3://bucket/x.jpg"])
+    llm.classify.assert_called_once_with("핵 팝니다", ["s3://bucket/x.jpg"], source_id=None)

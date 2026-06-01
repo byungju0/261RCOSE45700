@@ -9,7 +9,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from detection.src.pipeline import llm_client as llm_client_module
-from detection.src.pipeline.llm_client import CLASSIFICATION_SCHEMA, LLMClient, SYSTEM_PROMPT
+from detection.src.pipeline.llm_client import (
+    CLASSIFICATION_SCHEMA,
+    LLMClient,
+    SYSTEM_PROMPT,
+    build_system_prompt,
+)
 from shared.interfaces.llm import RateLimitError
 
 
@@ -75,6 +80,38 @@ def test_system_prompt_defines_confidence_rubric() -> None:
     assert "0.95-1.00" in SYSTEM_PROMPT
     assert "0.50-0.69" in SYSTEM_PROMPT
     assert "0.90 또는 0.95를 기본값처럼 반복하지 말고" in SYSTEM_PROMPT
+
+
+def test_build_system_prompt_base_plus_type_guidance_for_unknown_source() -> None:
+    # source_id 없음/미매핑 → 베이스 + 유형 가이드만, 게임 오버레이는 없음 (동작 중립 fallback).
+    prompt = build_system_prompt(None)
+    assert "NC AI 게임 보안 분석가" in prompt           # 베이스 보존
+    assert "유형 판별 가이드:" in prompt                 # Stage 2-A 항상 적용
+    assert "게임 맥락:" not in prompt                    # 오버레이 없음
+
+
+def test_build_system_prompt_injects_game_overlay() -> None:
+    # 매핑된 source_id → 게임 오버레이 주입. 안정부(베이스+가이드)가 오버레이보다 앞 (캐싱 prefix).
+    prompt = build_system_prompt("bahamut_lineage")
+    assert "유형 판별 가이드:" in prompt
+    assert "게임 맥락:" in prompt
+    assert prompt.index("유형 판별 가이드:") < prompt.index("게임 맥락:")
+
+
+def test_build_system_prompt_unknown_source_falls_back_to_base() -> None:
+    assert build_system_prompt("does_not_exist") == build_system_prompt(None)
+
+
+def test_classify_threads_source_id_into_system_prompt() -> None:
+    mock_openai = MagicMock()
+    mock_openai.chat.completions.create.return_value = _make_openai_response(
+        _classification_payload()
+    )
+    client = LLMClient(client=mock_openai)
+    client.classify("게시글", source_id="bahamut_lineage")
+
+    system_msg = mock_openai.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "게임 맥락:" in system_msg  # 게임 오버레이가 system prompt에 반영됨
 
 
 def test_classify_with_images_sends_multimodal_content(monkeypatch: pytest.MonkeyPatch) -> None:
