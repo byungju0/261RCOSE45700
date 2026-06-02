@@ -71,6 +71,10 @@ def build_system_prompt(source_id: str | None = None) -> str:
     overlay = get_game_overlay(source_id)
     if overlay:
         parts.append(overlay)
+    # Stage 2-B (few-shot 예시 주입) — 빈 슬롯. Story 3-5는 코퍼스 파일
+    # (detection/src/prompts/examples/{game_key}.jsonl)과 포맷 계약(examples/README.md)만 준비한다.
+    # 실제 예시 선택·삽입·토큰 예산 런타임 관리는 별도 미래 스토리 (deferred-work 참조).
+    # 주입 시에도 베이스 9-type/confidence 루브릭을 재정의하지 않고 예시로 보강만 한다 (오버레이 원칙 동일).
     return "\n\n".join(parts)
 
 

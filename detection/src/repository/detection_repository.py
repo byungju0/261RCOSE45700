@@ -17,12 +17,16 @@ from datetime import datetime, timezone
 
 from psycopg_pool import ConnectionPool
 
-from shared.interfaces.llm import LLMResponse
+from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse
 from shared.models.crawl_event import CrawlEvent
 from shared.structured_logger import get_logger
 
 _SERVICE_NAME = os.environ.get("SERVICE_NAME", "detection")
 _logger = get_logger(__name__)
+
+# 사람 라벨로 허용되는 값: 9-type enum ∪ {"unknown"}.
+# unknown = 사람이 봐도 판단 불가/정보 부족 (Story 3-5).
+ALLOWED_HUMAN_LABELS: frozenset[str] = ALLOWED_DETECTION_TYPES | {"unknown"}
 
 
 def _parse_crawled_at(value: str) -> datetime:
@@ -179,3 +183,62 @@ class DetectionRepository:
                 },
             )
         return detection_id
+
+    def set_human_label(
+        self,
+        post_id: int,
+        model_version: str,
+        label: str,
+        source: str = "manual_cli",
+    ) -> int:
+        """detections 행에 사람이 검증한 정답 라벨을 기록 (Story 3-5).
+
+        `(post_id, model_version)`로 detection 행을 찾아 `human_label`/`human_verified_at`/
+        `label_source`를 UPDATE한다. detections.(post_id, model_version)는 V3 unique constraint이라
+        최대 1행만 매칭된다. 재라벨 시 값만 덮어쓰므로 멱등 (행 증가 없음).
+
+        Args:
+            post_id: detections.post_id (posts.id FK — save() 후 detections 행에서 조회한 값).
+            model_version: detections.model_version.
+            label: 9-type enum 또는 "unknown". 그 외 값은 DB 도달 전 ValueError로 차단.
+            source: 라벨 출처. 기본 "manual_cli".
+
+        Returns:
+            UPDATE된 행 수 (0 = 매칭 없음, 1 = 라벨 기록됨).
+
+        Raises:
+            ValueError: label이 허용 enum 밖일 때 (SQL injection 방지 차원에서도 enum 화이트리스트).
+        """
+        if label not in ALLOWED_HUMAN_LABELS:
+            raise ValueError(
+                f"invalid human_label: {label!r} — "
+                f"허용 값: {sorted(ALLOWED_HUMAN_LABELS)}"
+            )
+
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE detections
+                       SET human_label = %s,
+                           human_verified_at = NOW(),
+                           label_source = %s
+                     WHERE post_id = %s AND model_version = %s
+                    """,
+                    (label, source, post_id, model_version),
+                )
+                updated = cur.rowcount
+
+        _logger.info(
+            "human_label 기록 — post_id=%s model_version=%s label=%s updated=%d",
+            post_id, model_version, label, updated,
+            extra={
+                "correlation_id": "",
+                "service": _SERVICE_NAME,
+                "post_id": post_id,
+                "model_version": model_version,
+                "human_label": label,
+                "label_source": source,
+            },
+        )
+        return updated

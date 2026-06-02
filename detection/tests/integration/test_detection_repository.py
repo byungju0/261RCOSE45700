@@ -159,3 +159,80 @@ def test_save_translated_text_persisted(clean_db) -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT translated_text FROM detections WHERE id=%s", (detection_id,))
             assert cur.fetchone()[0] == "월핵 최신 버전 업로드. 탐지 안 됨. 무료"
+
+
+# ---------------------------------------------------------------------------
+# Story 3-5: set_human_label
+# ---------------------------------------------------------------------------
+
+_MV = "openai:gpt-4o:2024-08-06"
+
+
+def _save_one(repo: DetectionRepository, post_id: str = "label_001") -> int:
+    """detection 1건 저장 후 detections.post_id (FK) 반환 — set_human_label 입력값."""
+    event = _build_event(post_id=post_id)
+    detection_id = repo.save(event, _build_response(), tier="T1", model_version=_MV)
+    assert detection_id is not None
+    with repo._pool.connection() as conn:  # noqa: SLF001 — 테스트에서 FK 조회
+        with conn.cursor() as cur:
+            cur.execute("SELECT post_id FROM detections WHERE id=%s", (detection_id,))
+            return cur.fetchone()[0]
+
+
+@requires_pg
+def test_set_human_label_updates_row(clean_db) -> None:
+    repo = DetectionRepository(clean_db)
+    fk_post_id = _save_one(repo)
+
+    updated = repo.set_human_label(fk_post_id, _MV, "핵_치트", source="manual_cli")
+    assert updated == 1
+
+    with clean_db.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT human_label, human_verified_at, label_source "
+                "FROM detections WHERE post_id=%s AND model_version=%s",
+                (fk_post_id, _MV),
+            )
+            label, verified_at, src = cur.fetchone()
+            assert label == "핵_치트"
+            assert verified_at is not None  # NOW()로 채워짐
+            assert src == "manual_cli"
+
+
+@requires_pg
+def test_set_human_label_idempotent(clean_db) -> None:
+    """재라벨 시 값만 덮어쓰고 행 수는 증가하지 않는다."""
+    repo = DetectionRepository(clean_db)
+    fk_post_id = _save_one(repo, post_id="label_idem")
+
+    repo.set_human_label(fk_post_id, _MV, "핵_치트")
+    second = repo.set_human_label(fk_post_id, _MV, "사설서버")  # 정정
+    assert second == 1
+
+    with clean_db.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM detections WHERE post_id=%s AND model_version=%s",
+                (fk_post_id, _MV),
+            )
+            assert cur.fetchone()[0] == 1  # 행 증가 없음
+            cur.execute(
+                "SELECT human_label FROM detections WHERE post_id=%s AND model_version=%s",
+                (fk_post_id, _MV),
+            )
+            assert cur.fetchone()[0] == "사설서버"  # 마지막 값으로 덮어쓰기
+
+
+@requires_pg
+def test_set_human_label_no_match_returns_zero(clean_db) -> None:
+    """매칭 행이 없으면 0 반환 (예외 아님)."""
+    repo = DetectionRepository(clean_db)
+    assert repo.set_human_label(999999, _MV, "핵_치트") == 0
+
+
+def test_set_human_label_rejects_invalid_label() -> None:
+    """enum 밖 값은 DB 도달 전 ValueError — pool 없이도 차단 검증."""
+    repo = DetectionRepository(pool=None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="invalid human_label"):
+        repo.set_human_label(1, _MV, "존재하지않는라벨")
