@@ -9,6 +9,10 @@ export interface FilterSelectOption {
 
 export function detectionFilterOptions() {
   return {
+    rangeOptions: [
+      { value: '7d', label: '최근 7일' },
+      { value: '30d', label: '최근 30일' },
+    ],
     siteOptions: KNOWN_SOURCES.map((source) => ({
       value: source,
       label: source,

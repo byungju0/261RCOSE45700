@@ -30,6 +30,7 @@ public class DetectionController {
     public ResponseEntity<DetectionListResponse> getDetections(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) String range,
             @RequestParam(required = false) String site,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String lang,
@@ -37,7 +38,7 @@ public class DetectionController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             HttpServletRequest request) {
 
-        var result = detectionService.getDetections(date, site, type, lang, page, size);
+        var result = detectionService.getDetections(date, range, site, type, lang, page, size);
         return ResponseEntity.ok()
                 .header("X-Correlation-ID", resolveCorrelationId(request))
                 .body(result);

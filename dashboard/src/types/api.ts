@@ -11,6 +11,7 @@ export type DetectionType =
 
 export type Language = 'ko' | 'zh-CN' | 'zh-TW';
 export type Tier = 'T1' | 'T2' | 'T3' | 'T4';
+export type DetectionDateRange = '7d' | '30d';
 
 export interface Detection {
   id: number;
@@ -80,6 +81,7 @@ export interface ProblemDetail {
 
 export interface DetectionFilter {
   date?: string; // YYYY-MM-DD
+  range?: DetectionDateRange;
   site?: string;
   type?: DetectionType;
   lang?: Language;

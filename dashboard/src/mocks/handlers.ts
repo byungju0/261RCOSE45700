@@ -46,6 +46,7 @@ export const handlers = [
   http.get(`${baseUrl}/detections`, ({ request }) => {
     const url = new URL(request.url);
     const date = url.searchParams.get('date');
+    const range = url.searchParams.get('range');
     const site = url.searchParams.get('site');
     const type = url.searchParams.get('type');
     const lang = url.searchParams.get('lang');
@@ -56,6 +57,12 @@ export const handlers = [
 
     if (date) {
       filtered = filtered.filter((d) => d.detectedAt.startsWith(date));
+    } else if (range === '7d' || range === '30d') {
+      const days = range === '7d' ? 7 : 30;
+      const from = new Date();
+      from.setHours(0, 0, 0, 0);
+      from.setDate(from.getDate() - (days - 1));
+      filtered = filtered.filter((d) => Date.parse(d.detectedAt) >= from.getTime());
     }
     if (site) {
       filtered = filtered.filter((d) => d.siteName === site);

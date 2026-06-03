@@ -4,6 +4,7 @@ import type { DetectionFilter } from '@/types/api';
 export function detectionFilterToParams(filter: DetectionFilter): URLSearchParams {
   const params = new URLSearchParams();
   if (filter.date) params.set('date', filter.date);
+  if (!filter.date && filter.range) params.set('range', filter.range);
   if (filter.site) params.set('site', filter.site);
   if (filter.type) params.set('type', filter.type);
   if (filter.lang) params.set('lang', filter.lang);
@@ -14,7 +15,7 @@ export function detectionFilterToParams(filter: DetectionFilter): URLSearchParam
   return params;
 }
 
-/** date / site / type / lang 중 하나라도 설정되어 있으면 active. */
+/** date / range / site / type / lang 중 하나라도 설정되어 있으면 active. */
 export function isFilterActive(filter: DetectionFilter): boolean {
-  return !!(filter.date || filter.site || filter.type || filter.lang);
+  return !!(filter.date || filter.range || filter.site || filter.type || filter.lang);
 }

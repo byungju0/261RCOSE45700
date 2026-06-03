@@ -37,7 +37,7 @@ import { useDetectionFilter } from '@/lib/useDetectionFilter';
 import { useShortcut } from '@/lib/shortcuts';
 import { detectionFilterOptions, type FilterSelectOption } from '@/lib/filterOptions';
 import { cn } from '@/lib/utils';
-import type { DetectionFilter, DetectionType, Language } from '@/types/api';
+import type { DetectionDateRange, DetectionFilter, DetectionType, Language } from '@/types/api';
 
 const PAGE_SIZE = 20;
 
@@ -234,10 +234,17 @@ function FilterBar(props: FilterBarProps) {
 }
 
 function DesktopFilterBar({ filter, onChange, onReset, active }: FilterBarProps) {
-  const { siteOptions, typeOptions, langOptions } = detectionFilterOptions();
+  const { rangeOptions, siteOptions, typeOptions, langOptions } = detectionFilterOptions();
 
   return (
     <div className="bg-card hidden flex-wrap items-center gap-2 rounded-lg border p-3 md:flex">
+      <FilterSelect
+        value={filter.range ?? ALL_VALUE}
+        allLabel={filter.date ? '지정 날짜' : '전체 기간'}
+        options={rangeOptions}
+        onChange={(v) => onChange({ range: v === ALL_VALUE ? undefined : (v as DetectionDateRange) })}
+        triggerClassName="w-[150px]"
+      />
       <FilterSelect
         value={filter.site ?? ALL_VALUE}
         allLabel="모든 사이트"
@@ -295,7 +302,7 @@ function FilterChip({
 }
 
 function MobileFilterBar({ filter, onChange, onReset, active }: FilterBarProps) {
-  const { siteOptions, typeOptions, langOptions } = detectionFilterOptions();
+  const { rangeOptions, siteOptions, typeOptions, langOptions } = detectionFilterOptions();
 
   const typeLabel = TYPE_OPTIONS.find((t) => t.value === filter.type)?.label;
   const langLabel = LANG_OPTIONS.find((l) => l.value === filter.lang)?.label;
@@ -328,6 +335,7 @@ function MobileFilterBar({ filter, onChange, onReset, active }: FilterBarProps) 
             {(
               [
                 { label: '사이트', options: siteOptions, value: filter.site, onChange: (v: string) => onChange({ site: v === ALL_VALUE ? undefined : v }) },
+                { label: '기간',   options: rangeOptions, value: filter.range, onChange: (v: string) => onChange({ range: v === ALL_VALUE ? undefined : (v as DetectionDateRange) }) },
                 { label: '유형',   options: typeOptions,  value: filter.type, onChange: (v: string) => onChange({ type: v === ALL_VALUE ? undefined : (v as DetectionType) }) },
                 { label: '언어',   options: langOptions,  value: filter.lang, onChange: (v: string) => onChange({ lang: v === ALL_VALUE ? undefined : (v as Language) }) },
               ] as const
@@ -361,6 +369,18 @@ function MobileFilterBar({ filter, onChange, onReset, active }: FilterBarProps) 
         <FilterChip
           label={filter.site}
           onClear={() => onChange({ site: undefined })}
+        />
+      )}
+      {filter.date && (
+        <FilterChip
+          label={filter.date}
+          onClear={() => onChange({ date: undefined })}
+        />
+      )}
+      {filter.range && (
+        <FilterChip
+          label={rangeOptions.find((r) => r.value === filter.range)?.label ?? filter.range}
+          onClear={() => onChange({ range: undefined })}
         />
       )}
       {filter.type && typeLabel && (

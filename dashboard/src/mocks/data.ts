@@ -87,64 +87,16 @@ const SAMPLE_POSTS: SamplePost[] = [
   },
 ];
 
+const ILLEGAL_SAMPLE_POSTS = SAMPLE_POSTS.filter(
+  (sample) => TYPE_TO_TIER[sample.type] !== 'T4',
+);
+
 function pseudoRandom(seed: number): number {
   // 결정론적 mock 데이터를 위한 의사 난수 (LCG)
   return (seed * 9301 + 49297) % 233280 / 233280;
 }
 
-/** 12건 mock detections 생성 (오늘 탐지 분포) */
-function generateMockDetections(count: number): Detection[] {
-  const now = Date.now();
-  const detections: Detection[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const seed = i + 1;
-    const sample = SAMPLE_POSTS[i % SAMPLE_POSTS.length];
-    const site = SOURCE_META[Math.floor(pseudoRandom(seed * 7) * SOURCE_META.length)];
-    const minutesAgo = Math.floor(pseudoRandom(seed * 13) * 60 * 8); // 0~8시간 전
-    const detectedAt = new Date(now - minutesAgo * 60 * 1000).toISOString();
-
-    // 신뢰도: 임계값 0.70 이상만 (FR22)
-    const confidence = 0.70 + pseudoRandom(seed * 17) * 0.30;
-
-    const isKorean = site.lang === 'ko';
-    const rawText = isKorean ? sample.rawKo : sample.rawZh;
-    const translatedText = isKorean ? null : sample.translatedKo;
-
-    detections.push({
-      id: 1000 + i,
-      isIllegal: TYPE_TO_TIER[sample.type] !== 'T4',
-      type: sample.type,
-      tier: TYPE_TO_TIER[sample.type],
-      confidence: Math.round(confidence * 100) / 100,
-      reason: sample.reason,
-      rawText,
-      translatedText,
-      postUrl: `https://${site.name}/post/${i + 100000}`,
-      siteName: site.name,
-      language: site.lang,
-      detectedAt,
-    });
-  }
-
-  // 조치 우선순위순: T1→T4, 같은 tier 안에서는 최신 탐지와 신뢰도로 안정 정렬.
-  detections.sort((a, b) =>
-    a.tier.localeCompare(b.tier) ||
-    Date.parse(b.detectedAt) - Date.parse(a.detectedAt) ||
-    b.confidence - a.confidence ||
-    b.id - a.id
-  );
-
-  return detections;
-}
-
-export const MOCK_DETECTIONS = generateMockDetections(12);
-
-export function getDetectionById(id: number): Detection | undefined {
-  return MOCK_DETECTIONS.find((d) => d.id === id);
-}
-
-/** 7일 추이 (오늘 포함) */
+/** 7일/30일 추이 (오늘 포함) */
 function generateTrend(days: number): { date: string; count: number }[] {
   const trend: { date: string; count: number }[] = [];
   const today = new Date();
@@ -165,26 +117,81 @@ function generateTrend(days: number): { date: string; count: number }[] {
 const trend7 = generateTrend(7);
 const trend30 = generateTrend(30);
 
-const todayCount = MOCK_DETECTIONS.length;
+/** trend count와 일치하는 mock detections 생성 */
+function generateMockDetections(trend: { date: string; count: number }[]): Detection[] {
+  const detections: Detection[] = [];
+
+  trend.forEach(({ date, count }, dayIdx) => {
+    for (let i = 0; i < count; i++) {
+      const globalIdx = detections.length;
+      const seed = (dayIdx + 1) * 100 + i + 1;
+      const sample = ILLEGAL_SAMPLE_POSTS[globalIdx % ILLEGAL_SAMPLE_POSTS.length];
+      const site = SOURCE_META[Math.floor(pseudoRandom(seed * 7) * SOURCE_META.length)];
+      const minutesAfterMidnight = Math.floor(pseudoRandom(seed * 13) * 60 * 20);
+      const detectedAt = new Date(`${date}T00:00:00.000Z`);
+      detectedAt.setUTCMinutes(minutesAfterMidnight);
+
+      // 신뢰도: 임계값 0.70 이상만 (FR22)
+      const confidence = 0.70 + pseudoRandom(seed * 17) * 0.30;
+
+      const isKorean = site.lang === 'ko';
+      const rawText = isKorean ? sample.rawKo : sample.rawZh;
+      const translatedText = isKorean ? null : sample.translatedKo;
+
+      detections.push({
+        id: 1000 + globalIdx,
+        isIllegal: TYPE_TO_TIER[sample.type] !== 'T4',
+        type: sample.type,
+        tier: TYPE_TO_TIER[sample.type],
+        confidence: Math.round(confidence * 100) / 100,
+        reason: sample.reason,
+        rawText,
+        translatedText,
+        postUrl: `https://${site.name}/post/${globalIdx + 100000}`,
+        siteName: site.name,
+        language: site.lang,
+        detectedAt: detectedAt.toISOString(),
+      });
+    }
+  });
+
+  // 조치 우선순위순: T1→T4, 같은 tier 안에서는 최신 탐지와 신뢰도로 안정 정렬.
+  detections.sort((a, b) =>
+    a.tier.localeCompare(b.tier) ||
+    Date.parse(b.detectedAt) - Date.parse(a.detectedAt) ||
+    b.confidence - a.confidence ||
+    b.id - a.id
+  );
+
+  return detections;
+}
+
+export const MOCK_DETECTIONS = generateMockDetections(trend30);
+
+export function getDetectionById(id: number): Detection | undefined {
+  return MOCK_DETECTIONS.find((d) => d.id === id);
+}
+
+const todayCount = trend30[trend30.length - 1]?.count ?? 0;
 const yesterdayCount = trend7.length >= 2 ? trend7[trend7.length - 2].count : 9;
 
-function buildStatsBase(): Omit<StatsResponse, 'trend'> {
+function buildStatsBase(detections: readonly Detection[]): Omit<StatsResponse, 'trend'> {
   // typeDistribution
   const typeCount = new Map<DetectionType, number>();
   TYPES.forEach((t) => typeCount.set(t, 0));
-  MOCK_DETECTIONS.forEach((d) => {
+  detections.forEach((d) => {
     typeCount.set(d.type, (typeCount.get(d.type) ?? 0) + 1);
   });
 
   // siteDistribution
   const siteCount = new Map<string, number>();
-  MOCK_DETECTIONS.forEach((d) => {
+  detections.forEach((d) => {
     siteCount.set(d.siteName, (siteCount.get(d.siteName) ?? 0) + 1);
   });
 
   // langDistribution
   const langCount = new Map<Language, number>();
-  MOCK_DETECTIONS.forEach((d) => {
+  detections.forEach((d) => {
     langCount.set(d.language, (langCount.get(d.language) ?? 0) + 1);
   });
 
@@ -210,20 +217,25 @@ function buildStatsBase(): Omit<StatsResponse, 'trend'> {
     siteDistribution: Array.from(siteCount.entries())
       .map(([site, count]) => ({ site, count }))
       .sort((a, b) => b.count - a.count),
-    langDistribution: Array.from(langCount.entries()).map(([lang, count]) => ({
-      lang,
-      count,
-    })),
+    langDistribution: Array.from(langCount.entries())
+      .map(([lang, count]) => ({ lang, count }))
+      .sort((a, b) => b.count - a.count),
     sourceHealth,
   };
 }
 
-const STATS_BASE = buildStatsBase();
+function getDetectionsForTrend(trend: readonly { date: string; count: number }[]): Detection[] {
+  const dates = new Set(trend.map((entry) => entry.date));
+  return MOCK_DETECTIONS.filter((d) => dates.has(d.detectedAt.slice(0, 10)));
+}
+
+const STATS_BASE = buildStatsBase(MOCK_DETECTIONS);
 
 export function buildStatsResponse(period?: 'weekly' | 'monthly'): StatsResponse {
   if (!period) return STATS_BASE;
+  const trend = period === 'monthly' ? trend30 : trend7;
   return {
-    ...STATS_BASE,
-    trend: period === 'monthly' ? trend30 : trend7,
+    ...buildStatsBase(getDetectionsForTrend(trend)),
+    trend,
   };
 }

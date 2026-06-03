@@ -35,7 +35,7 @@ class DetectionControllerTest {
         var mockDetection = new DetectionResponse(1L, true, "매크로_판매", "T2", 0.95,
                 "이유", "원문", null, "http://example.com", "tailstar.net", "zh-CN",
                 "2026-04-24T14:30:00Z");
-        when(detectionService.getDetections(any(), any(), any(), any(), eq(0), eq(20)))
+        when(detectionService.getDetections(any(), any(), any(), any(), any(), eq(0), eq(20)))
                 .thenReturn(new DetectionListResponse(List.of(mockDetection), 0, 20, 1L));
 
         mockMvc.perform(get("/api/detections"))
@@ -50,7 +50,7 @@ class DetectionControllerTest {
 
     @Test
     void getDetections_emptyResult_returns200() throws Exception {
-        when(detectionService.getDetections(any(), any(), any(), any(), eq(0), eq(20)))
+        when(detectionService.getDetections(any(), any(), any(), any(), any(), eq(0), eq(20)))
                 .thenReturn(new DetectionListResponse(List.of(), 0, 20, 0L));
 
         mockMvc.perform(get("/api/detections"))
@@ -79,6 +79,7 @@ class DetectionControllerTest {
     void getDetections_passesFilterParametersToService() throws Exception {
         when(detectionService.getDetections(
                 eq(LocalDate.of(2026, 4, 24)),
+                eq(null),
                 eq("tailstar.net"),
                 eq("매크로_판매"),
                 eq("ko"),
@@ -97,11 +98,30 @@ class DetectionControllerTest {
 
         verify(detectionService).getDetections(
                 LocalDate.of(2026, 4, 24),
+                null,
                 "tailstar.net",
                 "매크로_판매",
                 "ko",
                 1,
                 10);
+    }
+
+    @Test
+    void getDetections_passesRangeParameterToService() throws Exception {
+        when(detectionService.getDetections(
+                eq(null),
+                eq("7d"),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(0),
+                eq(20)))
+                .thenReturn(new DetectionListResponse(List.of(), 0, 20, 0L));
+
+        mockMvc.perform(get("/api/detections").param("range", "7d"))
+                .andExpect(status().isOk());
+
+        verify(detectionService).getDetections(null, "7d", null, null, null, 0, 20);
     }
 
     @Test

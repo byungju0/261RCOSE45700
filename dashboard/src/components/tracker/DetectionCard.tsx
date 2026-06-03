@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { TypeIcon } from './TypeIcon';
 import { SEVERITY_TINT_CLASSES, severityOfDetection } from '@/lib/severity';
-import { formatRelativeTime } from '@/lib/time';
+import { formatDateTime, formatRelativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { Detection } from '@/types/api';
 
@@ -19,6 +19,7 @@ interface DetectionCardProps {
 export function DetectionCard({ detection, visited = false, onSelect }: DetectionCardProps) {
   const severity = severityOfDetection(detection);
   const time = formatRelativeTime(detection.detectedAt);
+  const dateTime = formatDateTime(detection.detectedAt);
   const snippet = detection.translatedText ?? detection.rawText;
 
   return (
@@ -52,7 +53,9 @@ export function DetectionCard({ detection, visited = false, onSelect }: Detectio
           >
             {detection.siteName}
           </span>
-          <span className="text-fg-3 font-mono text-xs tabular-nums">{time}</span>
+          <span className="text-fg-3 font-mono text-xs tabular-nums" title={time}>
+            {dateTime}
+          </span>
         </div>
         <p
           className="text-fg-2 line-clamp-2 text-sm leading-relaxed"

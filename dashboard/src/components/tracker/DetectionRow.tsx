@@ -4,7 +4,7 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { TypeIcon } from './TypeIcon';
 import { SEVERITY_TINT_CLASSES, severityOfDetection } from '@/lib/severity';
-import { formatRelativeTime } from '@/lib/time';
+import { formatDateTime, formatRelativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { Detection } from '@/types/api';
 
@@ -32,6 +32,7 @@ function DetectionRowImpl({
   }, [focused]);
 
   const time = formatRelativeTime(detection.detectedAt);
+  const dateTime = formatDateTime(detection.detectedAt);
   const severity = severityOfDetection(detection);
 
   return (
@@ -71,8 +72,11 @@ function DetectionRowImpl({
       <TableCell className="text-muted-foreground max-w-0 truncate text-sm">
         {detection.translatedText ?? detection.rawText}
       </TableCell>
-      <TableCell className="text-muted-foreground w-[120px] text-right font-mono text-xs">
-        {time}
+      <TableCell
+        className="text-muted-foreground w-[132px] text-right font-mono text-xs"
+        title={time}
+      >
+        {dateTime}
       </TableCell>
       <TableCell className="w-[40px] text-right">
         <ChevronRight

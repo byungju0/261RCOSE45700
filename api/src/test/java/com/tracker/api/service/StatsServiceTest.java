@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -106,10 +107,13 @@ class StatsServiceTest {
         when(valueOps.get("cache:detections:stats:weekly")).thenReturn(null);
         when(statsRepository.countToday(any(LocalDate.class))).thenReturn(5L);
         when(statsRepository.countYesterday(any(LocalDate.class))).thenReturn(4L);
-        when(statsRepository.findTypeDistributionRaw()).thenReturn(List.of());
-        when(statsRepository.findSiteDistributionRaw()).thenReturn(List.of());
-        when(statsRepository.findLangDistributionRaw()).thenReturn(List.of());
-        when(statsRepository.findTrendRaw(any(), any()))
+        when(statsRepository.findTypeDistributionRaw(any(Instant.class), any(Instant.class)))
+                .thenReturn(List.of());
+        when(statsRepository.findSiteDistributionRaw(any(Instant.class), any(Instant.class)))
+                .thenReturn(List.of());
+        when(statsRepository.findLangDistributionRaw(any(Instant.class), any(Instant.class)))
+                .thenReturn(List.of());
+        when(statsRepository.findTrendRaw(any(Instant.class), any(Instant.class)))
                 .thenReturn(List.<Object[]>of(new Object[]{today, 5L}));
 
         StatsResponse result = statsService.getStats("weekly");
@@ -119,6 +123,9 @@ class StatsServiceTest {
         assertThat(result.trend().getFirst().count()).isZero();
         assertThat(result.trend().getLast().date()).isEqualTo(today.toString());
         assertThat(result.trend().getLast().count()).isEqualTo(5L);
+        verify(statsRepository).findTypeDistributionRaw(
+                eq(today.minusDays(6).atStartOfDay().toInstant(ZoneOffset.UTC)),
+                eq(today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)));
         verify(valueOps).set(eq("cache:detections:stats:weekly"), any(String.class), eq(Duration.ofSeconds(60)));
     }
 }

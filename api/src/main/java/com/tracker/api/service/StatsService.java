@@ -66,18 +66,28 @@ public class StatsService {
         long todayCount = statsRepository.countToday(today);
         long yesterdayCount = statsRepository.countYesterday(today);
         long delta = todayCount - yesterdayCount;
+        TimeRange periodRange = resolvePeriodRange(period, today);
 
-        var typeDistribution = statsRepository.findTypeDistributionRaw().stream()
+        var typeDistributionRows = periodRange == null
+                ? statsRepository.findTypeDistributionRaw()
+                : statsRepository.findTypeDistributionRaw(periodRange.from(), periodRange.to());
+        var typeDistribution = typeDistributionRows.stream()
                 .filter(row -> row[0] != null)
                 .map(row -> new StatsResponse.TypeDistributionItem((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
-        var siteDistribution = statsRepository.findSiteDistributionRaw().stream()
+        var siteDistributionRows = periodRange == null
+                ? statsRepository.findSiteDistributionRaw()
+                : statsRepository.findSiteDistributionRaw(periodRange.from(), periodRange.to());
+        var siteDistribution = siteDistributionRows.stream()
                 .filter(row -> row[0] != null)
                 .map(row -> new StatsResponse.SiteDistributionItem((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
-        var langDistribution = statsRepository.findLangDistributionRaw().stream()
+        var langDistributionRows = periodRange == null
+                ? statsRepository.findLangDistributionRaw()
+                : statsRepository.findLangDistributionRaw(periodRange.from(), periodRange.to());
+        var langDistribution = langDistributionRows.stream()
                 .filter(row -> row[0] != null)
                 .map(row -> new StatsResponse.LangDistributionItem((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
@@ -95,17 +105,27 @@ public class StatsService {
 
     private List<StatsResponse.TrendItem> buildTrend(String period, LocalDate today) {
         if ("weekly".equals(period)) {
-            LocalDate fromDate = today.minusDays(6);
-            Instant from = fromDate.atStartOfDay().toInstant(ZoneOffset.UTC);
-            Instant to = today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-            return toTrendItems(statsRepository.findTrendRaw(from, to), fromDate, 7);
+            TimeRange range = resolvePeriodRange(period, today);
+            return toTrendItems(statsRepository.findTrendRaw(range.from(), range.to()), today.minusDays(6), 7);
         } else if ("monthly".equals(period)) {
-            LocalDate fromDate = today.minusDays(29);
-            Instant from = fromDate.atStartOfDay().toInstant(ZoneOffset.UTC);
-            Instant to = today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-            return toTrendItems(statsRepository.findTrendRaw(from, to), fromDate, 30);
+            TimeRange range = resolvePeriodRange(period, today);
+            return toTrendItems(statsRepository.findTrendRaw(range.from(), range.to()), today.minusDays(29), 30);
         }
         return List.of();
+    }
+
+    private TimeRange resolvePeriodRange(String period, LocalDate today) {
+        if ("weekly".equals(period)) {
+            return new TimeRange(
+                    today.minusDays(6).atStartOfDay().toInstant(ZoneOffset.UTC),
+                    today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));
+        }
+        if ("monthly".equals(period)) {
+            return new TimeRange(
+                    today.minusDays(29).atStartOfDay().toInstant(ZoneOffset.UTC),
+                    today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));
+        }
+        return null;
     }
 
     private List<StatsResponse.TrendItem> toTrendItems(List<Object[]> rows, LocalDate fromDate, int days) {
@@ -149,4 +169,6 @@ public class StatsService {
 
         throw new InvalidFilterParamException("period는 weekly 또는 monthly만 허용됩니다.");
     }
+
+    private record TimeRange(Instant from, Instant to) {}
 }

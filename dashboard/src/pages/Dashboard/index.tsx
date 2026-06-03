@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, CalendarDays } from 'lucide-react';
 import { LineChart } from '@/components/charts/LineChart';
 import { ChartCard } from '@/components/tracker/ChartCard';
 import { EmptyState } from '@/components/tracker/EmptyState';
 import { RecentAlertList } from '@/components/tracker/RecentAlertList';
 import { getTypeLabel } from '@/components/tracker/labels';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDetectionsSuspenseQuery } from '@/api/detections';
 import { useStatsSuspenseQuery } from '@/api/stats';
 import { PageContainer } from '@/layouts/PageContainer';
@@ -22,10 +21,14 @@ import type { Detection, DetectionFilter, StatsPeriod, Tier } from '@/types/api'
 export function DashboardPage() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<StatsPeriod>('weekly');
+  const selectedRange = period === 'weekly' ? '7d' : '30d';
   // dataUpdatedAt이 60s polling마다 갱신 → TanStack Query subscription이 자동 re-render
   // 유발. ticker 불필요. 자정 롤오버도 다음 polling tick(<60s)에 자연 반영.
   const { data, dataUpdatedAt } = useStatsSuspenseQuery(period);
-  const { data: detectionData } = useDetectionsSuspenseQuery({ size: 100 });
+  const { data: detectionData } = useDetectionsSuspenseQuery({
+    size: 100,
+    range: selectedRange,
+  });
 
   const trendData =
     data.trend?.map((entry) => ({
@@ -97,51 +100,120 @@ export function DashboardPage() {
 
           <RecentAlertList />
 
-          <section style={{ marginBottom: 'var(--pad-section)' }}>
-            <div className="mb-4 flex items-baseline justify-between">
-              <SectionTitle>Hotspots</SectionTitle>
-            </div>
-            <HotspotCard
-              data={hotspots}
-              typeData={typeData}
-              siteData={siteData}
-              langData={langData}
-              onSelect={(entry) => openDetections({ type: entry.type, site: entry.site })}
-              onFilter={openDetections}
-            />
-          </section>
-
-          <section style={{ marginBottom: 'var(--pad-section)' }}>
-            <div className="mb-4 flex items-baseline justify-between gap-3">
-              <SectionTitle>Period</SectionTitle>
-              <Tabs
-                value={period}
-                onValueChange={(v) => setPeriod(v as StatsPeriod)}
-              >
-                <TabsList>
-                  <TabsTrigger value="weekly">주간</TabsTrigger>
-                  <TabsTrigger value="monthly">월간</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-            <ChartCard
-              title={period === 'weekly' ? '주간 탐지 추이' : '월간 탐지 추이'}
-              subtitle="날짜를 클릭하면 해당 일자 탐지 목록으로 이동"
-              empty={trendData.length === 0}
-              emptyMessage="기간 추이 데이터 없음"
+          <section
+            className="border-t"
+            style={{
+              borderColor: 'var(--border-1)',
+              paddingTop: 'var(--pad-section-head)',
+            }}
+          >
+            <div
+              className="mb-4 flex flex-wrap items-end justify-between gap-3"
             >
-              <div className="flex w-full flex-col gap-3">
-                <LineChart data={trendData} />
-                <DateDrilldownRow
-                  data={trendData}
-                  onSelect={(date) => openDetections({ date })}
-                />
+              <div className="flex flex-col gap-1">
+                <h2
+                  className="m-0 font-semibold"
+                  style={{
+                    color: 'var(--fg)',
+                    fontSize: 'var(--text-lg)',
+                    lineHeight: 'var(--lh-snug)',
+                  }}
+                >
+                  기간별 탐지
+                </h2>
+                <span
+                  className="text-xs"
+                  style={{ color: 'var(--fg-3)' }}
+                >
+                  선택한 기간 기준으로 필터와 추이를 함께 표시
+                </span>
               </div>
-            </ChartCard>
+              <PeriodControl value={period} onChange={setPeriod} />
+            </div>
+
+            <section style={{ marginBottom: 'var(--pad-section)' }}>
+              <HotspotCard
+                data={hotspots}
+                typeData={typeData}
+                siteData={siteData}
+                langData={langData}
+                onSelect={(entry) =>
+                  openDetections({ type: entry.type, site: entry.site, range: selectedRange })
+                }
+                onFilter={(filter) => openDetections({ ...filter, range: selectedRange })}
+              />
+            </section>
+
+            <section style={{ marginBottom: 'var(--pad-section)' }}>
+              <ChartCard
+                title={period === 'weekly' ? '주간 탐지 추이' : '월간 탐지 추이'}
+                subtitle="포인트 클릭 시 해당 날짜 탐지 목록으로 이동"
+                empty={trendData.length === 0}
+                emptyMessage="기간 추이 데이터 없음"
+              >
+                <LineChart
+                  data={trendData}
+                  onSelect={(entry) => entry.date && openDetections({ date: entry.date })}
+                />
+              </ChartCard>
+            </section>
           </section>
         </>
       )}
     </PageContainer>
+  );
+}
+
+function PeriodControl({
+  value,
+  onChange,
+}: {
+  value: StatsPeriod;
+  onChange: (value: StatsPeriod) => void;
+}) {
+  const options: { value: StatsPeriod; label: string }[] = [
+    { value: 'weekly', label: '최근 7일' },
+    { value: 'monthly', label: '최근 30일' },
+  ];
+
+  return (
+    <div
+      className="inline-flex h-9 items-center rounded-md border p-1"
+      style={{
+        background: 'var(--bg-elev)',
+        borderColor: 'var(--border-1)',
+        boxShadow: '0 1px 2px oklch(0 0 0 / 0.04)',
+      }}
+      aria-label="대시보드 기간 기준"
+    >
+      <span
+        className="flex h-7 items-center gap-1.5 border-r px-2 text-xs font-medium"
+        style={{ color: 'var(--fg-2)', borderColor: 'var(--border-1)' }}
+      >
+        <CalendarDays className="size-3.5" aria-hidden="true" />
+        기간
+      </span>
+      <div className="ml-1 flex items-center gap-1">
+        {options.map((option) => {
+          const active = value === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              aria-pressed={active}
+              className="h-7 rounded-[4px] px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              style={{
+                background: active ? 'var(--accent)' : 'transparent',
+                color: active ? 'var(--on-accent)' : 'var(--fg-2)',
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -274,38 +346,6 @@ type DrillDatum = {
   lang?: DetectionFilter['lang'];
 };
 
-type TrendDatum = {
-  name: string;
-  value: number;
-  date: string;
-};
-
-function DateDrilldownRow({
-  data,
-  onSelect,
-}: {
-  data: TrendDatum[];
-  onSelect: (date: string) => void;
-}) {
-  return (
-    <div className="border-border-1 flex gap-1.5 overflow-x-auto border-t pt-3">
-      {data.map((entry) => (
-        <button
-          key={entry.date}
-          type="button"
-          onClick={() => onSelect(entry.date)}
-          aria-label={`${entry.date} 탐지 목록 보기`}
-          className="text-fg-2 hover:bg-bg-overlay hover:text-fg shrink-0 rounded-[5px] border px-2 py-1 text-xs transition-colors"
-          style={{ borderColor: 'var(--border-1)' }}
-        >
-          <span className="font-mono">{entry.name}</span>
-          <span className="font-mono ml-1 tabular-nums">{entry.value}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 interface HotspotEntry {
   type: Detection['type'];
   typeLabel: string;
@@ -375,14 +415,12 @@ function HotspotCard({
 }) {
   return (
     <ChartCard
-      title="우선 조치 패턴"
-      subtitle="유형과 출처가 함께 몰린 조합 · 행 클릭 시 조합 필터"
       empty={data.length === 0}
       emptyMessage="우선 조치할 조합이 없습니다"
     >
-      <div className="flex w-full flex-col gap-4">
+      <div className="flex w-full flex-col gap-3">
         <div
-          className="border-border-1 flex flex-col gap-2 border-b pb-3"
+          className="flex flex-col gap-2"
         >
           <span
             className="text-xs font-semibold uppercase"
@@ -390,21 +428,26 @@ function HotspotCard({
           >
             Quick filters
           </span>
-          <FilterChipRow
-            data={[
-              ...typeData.slice(0, 3),
-              ...siteData.slice(0, 3),
-              ...langData.slice(0, 2),
-            ]}
-            onSelect={(entry) => {
-              if (entry.type) onFilter({ type: entry.type });
-              else if (entry.site) onFilter({ site: entry.site });
-              else if (entry.lang) onFilter({ lang: entry.lang });
-            }}
-          />
+          <div className="grid gap-2 md:grid-cols-3">
+            <FilterChipGroup
+              label="유형"
+              data={typeData.slice(0, 3)}
+              onSelect={(entry) => entry.type && onFilter({ type: entry.type })}
+            />
+            <FilterChipGroup
+              label="사이트"
+              data={siteData.slice(0, 3)}
+              onSelect={(entry) => entry.site && onFilter({ site: entry.site })}
+            />
+            <FilterChipGroup
+              label="언어"
+              data={langData}
+              onSelect={(entry) => entry.lang && onFilter({ lang: entry.lang })}
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+        <div className="border-border-1 overflow-hidden rounded-md border">
           {data.map((entry, idx) => (
             <HotspotRow
               key={`${entry.type}-${entry.site}`}
@@ -419,26 +462,36 @@ function HotspotCard({
   );
 }
 
-function FilterChipRow({
+function FilterChipGroup({
+  label,
   data,
   onSelect,
 }: {
+  label: string;
   data: DrillDatum[];
   onSelect: (entry: DrillDatum) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {data.map((entry) => (
-        <button
-          key={`${entry.name}-${entry.value}`}
-          type="button"
-          onClick={() => onSelect(entry)}
-          className="text-fg-2 hover:bg-bg-overlay hover:text-fg rounded-[5px] border px-2 py-1 text-xs transition-colors"
-          style={{ borderColor: 'var(--border-1)' }}
-        >
-          {entry.name} {entry.value.toLocaleString('ko-KR')}
-        </button>
-      ))}
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span
+        className="text-[0.68rem] font-semibold uppercase"
+        style={{ color: 'var(--fg-3)', letterSpacing: 'var(--tracking-wider)' }}
+      >
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {data.map((entry) => (
+          <button
+            key={`${entry.name}-${entry.value}`}
+            type="button"
+            onClick={() => onSelect(entry)}
+            className="text-fg-2 hover:text-fg rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-bg-overlay"
+            style={{ borderColor: 'var(--border-1)' }}
+          >
+            {entry.name} {entry.value.toLocaleString('ko-KR')}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -469,15 +522,19 @@ function HotspotRow({
     <button
       type="button"
       onClick={onSelect}
-      className="group border-border-1 hover:bg-bg-overlay focus-visible:ring-ring/60 grid w-full cursor-pointer items-center gap-3 rounded-[5px] border bg-transparent px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2"
-      style={{ gridTemplateColumns: '28px minmax(0,1fr) auto' }}
+      className="group border-border-1 focus-visible:ring-ring/60 grid w-full cursor-pointer items-center gap-3 border-b bg-transparent px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-bg-overlay focus-visible:outline-none focus-visible:ring-2 md:px-4"
+      style={{ gridTemplateColumns: '42px minmax(0,1fr) auto' }}
       aria-label={`${entry.typeLabel} ${entry.site} 탐지 목록 보기 — ${entry.count.toLocaleString('ko-KR')}건`}
     >
       <span
-        className="font-mono text-xs tabular-nums"
-        style={{ color: 'var(--fg-3)' }}
+        className="font-mono inline-flex h-6 w-9 items-center justify-center rounded-[4px] text-[0.68rem] font-semibold tabular-nums"
+        style={{
+          background: 'var(--bg-overlay)',
+          color: 'var(--fg-3)',
+          boxShadow: 'inset 0 0 0 1px var(--border-1)',
+        }}
       >
-        {String(rank).padStart(2, '0')}
+        #{String(rank).padStart(2, '0')}
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex min-w-0 items-center gap-2">
@@ -502,23 +559,15 @@ function HotspotRow({
         </span>
       </span>
       <span
-        className="font-mono text-sm font-semibold tabular-nums"
-        style={{ color: 'var(--fg)' }}
+        className="font-mono rounded-md px-2 py-1 text-right text-sm font-semibold tabular-nums"
+        style={{
+          background: 'var(--bg-overlay)',
+          color: 'var(--fg)',
+        }}
       >
         {entry.count.toLocaleString('ko-KR')}건
       </span>
     </button>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      className="text-xs font-semibold uppercase"
-      style={{ color: 'var(--fg-3)', letterSpacing: 'var(--tracking-wider)' }}
-    >
-      {children}
-    </span>
   );
 }
 

@@ -3,6 +3,7 @@ package com.tracker.api.service;
 import com.tracker.api.dto.DetectionListResponse;
 import com.tracker.api.dto.DetectionResponse;
 import com.tracker.api.exception.DetectionNotFoundException;
+import com.tracker.api.exception.InvalidFilterParamException;
 import com.tracker.api.repository.DetectionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,9 +24,9 @@ public class DetectionService {
 
     @Transactional(readOnly = true)
     public DetectionListResponse getDetections(
-            LocalDate date, String site, String type, String lang, int page, int size) {
+            LocalDate date, String range, String site, String type, String lang, int page, int size) {
 
-        Instant fromTime = date != null ? date.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant fromTime = resolveFromTime(date, range);
         Instant toTime   = date != null ? date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
 
         // 빈 문자열은 null로 변환 (JPQL IS NULL 조건 올바르게 동작)
@@ -50,6 +51,22 @@ public class DetectionService {
                 .toList();
 
         return new DetectionListResponse(content, page, size, resultPage.getTotalElements());
+    }
+
+    private Instant resolveFromTime(LocalDate date, String range) {
+        if (date != null) {
+            return date.atStartOfDay(ZoneOffset.UTC).toInstant();
+        }
+        if (!StringUtils.hasText(range)) {
+            return null;
+        }
+
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        return switch (range) {
+            case "7d" -> today.minusDays(6).atStartOfDay(ZoneOffset.UTC).toInstant();
+            case "30d" -> today.minusDays(29).atStartOfDay(ZoneOffset.UTC).toInstant();
+            default -> throw new InvalidFilterParamException("range는 7d 또는 30d만 허용됩니다.");
+        };
     }
 
     @Transactional(readOnly = true)

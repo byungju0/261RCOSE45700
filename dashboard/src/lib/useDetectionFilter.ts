@@ -4,14 +4,14 @@ import {
   detectionFilterToParams,
   isFilterActive,
 } from './detectionFilter';
-import type { DetectionFilter, DetectionType, Language } from '@/types/api';
+import type { DetectionDateRange, DetectionFilter, DetectionType, Language } from '@/types/api';
 
 /**
  * URL search params <-> DetectionFilter 양방향 sync.
  *
  * - filter는 searchParams에서 파생 (URL이 single source of truth)
  * - updateFilter / resetFilters는 useTransition으로 wrap — fetch 동안 이전 화면 유지
- * - hasActiveFilter는 date/site/type/lang 중 하나라도 설정됐는지
+ * - hasActiveFilter는 date/range/site/type/lang 중 하나라도 설정됐는지
  *
  * 페이지 사이즈는 size 파라미터로 받아 URL에 노출하지 않음 (page만 URL 상태).
  */
@@ -21,18 +21,24 @@ export function useDetectionFilter(pageSize: number) {
 
   const filter: DetectionFilter = useMemo(() => {
     const date = searchParams.get('date') ?? undefined;
+    const range =
+      (searchParams.get('range') as DetectionDateRange | null) ?? undefined;
     const site = searchParams.get('site') ?? undefined;
     const type =
       (searchParams.get('type') as DetectionType | null) ?? undefined;
     const lang = (searchParams.get('lang') as Language | null) ?? undefined;
     const page = Number(searchParams.get('page') ?? '0');
-    return { date, site, type, lang, page, size: pageSize };
+    return { date, range: date ? undefined : range, site, type, lang, page, size: pageSize };
   }, [searchParams, pageSize]);
 
   const updateFilter = (next: Partial<DetectionFilter>, resetPage = true) => {
+    const hasNextDate = Object.prototype.hasOwnProperty.call(next, 'date');
+    const hasNextRange = Object.prototype.hasOwnProperty.call(next, 'range');
     const merged: DetectionFilter = {
       ...filter,
       ...next,
+      date: hasNextRange && next.range ? undefined : (hasNextDate ? next.date : filter.date),
+      range: hasNextDate && next.date ? undefined : (hasNextRange ? next.range : filter.range),
       page: resetPage ? 0 : (next.page ?? filter.page),
       size: undefined,
     };
