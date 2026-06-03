@@ -40,7 +40,10 @@ class LLMMock:
         if self._latency_ms > 0:
             time.sleep(self._latency_ms / 1000)
 
-    def classify(self, text: str, images: list[str] | None = None) -> LLMResponse:
+    def classify(
+        self, text: str, images: list[str] | None = None, source_id: str | None = None
+    ) -> LLMResponse:
+        # source_id는 mock 분류에 영향 없음 — Protocol 시그니처 일치를 위해 수용.
         self._sleep()
         if self._mode == "rate_limited":
             raise RateLimitError(self._data.get("retry_after_seconds", 30))

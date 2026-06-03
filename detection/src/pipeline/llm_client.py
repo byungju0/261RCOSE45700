@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from detection.src.prompts.registry import get_game_overlay, get_type_guidance
 from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse, RateLimitError
 from shared.structured_logger import get_logger
 
@@ -54,6 +55,28 @@ SYSTEM_PROMPT = (
     "- 0.00-0.49: 해당 type 근거가 약함. 합법/무관 게시글이면 type=기타와 낮은 confidence를 사용\n"
     "0.90 또는 0.95를 기본값처럼 반복하지 말고, 근거 강도에 맞춰 다양한 값을 선택하세요."
 )
+
+
+def build_system_prompt(source_id: str | None = None) -> str:
+    """조립식 system prompt: 베이스 + 유형 가이드(Stage 2-A) + 게임별 오버레이(Stage 1).
+
+    안정부(베이스 + 유형 가이드)를 앞에 두고 게임별 오버레이를 뒤에 붙여, 모든 호출에 공통인
+    prefix를 키워 OpenAI 프롬프트 캐싱 효율을 높인다. 유형 가이드/오버레이 파일이 없으면
+    베이스(SYSTEM_PROMPT)만 반환 — 동작 중립 fallback.
+    """
+    parts = [SYSTEM_PROMPT]
+    type_guidance = get_type_guidance()
+    if type_guidance:
+        parts.append(type_guidance)
+    overlay = get_game_overlay(source_id)
+    if overlay:
+        parts.append(overlay)
+    # Stage 2-B (few-shot 예시 주입) — 빈 슬롯. Story 3-5는 코퍼스 파일
+    # (detection/src/prompts/examples/{game_key}.jsonl)과 포맷 계약(examples/README.md)만 준비한다.
+    # 실제 예시 선택·삽입·토큰 예산 런타임 관리는 별도 미래 스토리 (deferred-work 참조).
+    # 주입 시에도 베이스 9-type/confidence 루브릭을 재정의하지 않고 예시로 보강만 한다 (오버레이 원칙 동일).
+    return "\n\n".join(parts)
+
 
 CLASSIFICATION_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -131,14 +154,19 @@ class LLMClient:
     def model(self) -> str:
         return self._model
 
-    def classify_text_only(self, text: str) -> LLMResponse:
+    def classify_text_only(self, text: str, source_id: str | None = None) -> LLMResponse:
         """이미지 없이 텍스트만 분류 (fallback 진입점)."""
-        return self._call(text, images_payload=[])
+        return self._call(text, images_payload=[], source_id=source_id)
 
-    def classify(self, text: str, images: list[str] | None = None) -> LLMResponse:
-        """기본 진입점. images가 비면 텍스트 only, 채워지면 멀티모달."""
+    def classify(
+        self, text: str, images: list[str] | None = None, source_id: str | None = None
+    ) -> LLMResponse:
+        """기본 진입점. images가 비면 텍스트 only, 채워지면 멀티모달.
+
+        source_id: CrawlEvent.source_id — 게임별 프롬프트 오버레이 선택에 사용 (Stage 1).
+        """
         if not images or not self._send_images:
-            return self._call(text, images_payload=[])
+            return self._call(text, images_payload=[], source_id=source_id)
 
         # 이미지 URL/경로 → OpenAI content block으로 변환.
         image_blocks: list[dict[str, Any]] = []
@@ -150,12 +178,12 @@ class LLMClient:
 
         if not image_blocks:
             # 모든 이미지가 스킵 — 텍스트 only fallback
-            return self._call(text, images_payload=[])
+            return self._call(text, images_payload=[], source_id=source_id)
 
         if self._split_text_image:
             # 텍스트 호출 + 이미지 호출 분리 후 merge.
-            text_resp = self._call(text, images_payload=[])
-            image_resp = self._call(text, images_payload=image_blocks)
+            text_resp = self._call(text, images_payload=[], source_id=source_id)
+            image_resp = self._call(text, images_payload=image_blocks, source_id=source_id)
             # 이미지 호출이 image_observed=true이면 우선 적용.
             merged_type = image_resp.type if image_resp.image_observed else text_resp.type
             merged_conf = max(text_resp.confidence, image_resp.confidence)
@@ -170,9 +198,15 @@ class LLMClient:
                 cost_usd=text_resp.cost_usd + image_resp.cost_usd,
             )
 
-        return self._call(text, images_payload=image_blocks)
+        return self._call(text, images_payload=image_blocks, source_id=source_id)
 
-    def _call(self, text: str, *, images_payload: list[dict[str, Any]]) -> LLMResponse:
+    def _call(
+        self,
+        text: str,
+        *,
+        images_payload: list[dict[str, Any]],
+        source_id: str | None = None,
+    ) -> LLMResponse:
         """단일 OpenAI Chat Completions 호출. 429는 Retry-After 1회 자동 재시도."""
         user_content: list[dict[str, Any]] = [
             {"type": "text", "text": f"게시글:\n{text}"}
@@ -180,7 +214,7 @@ class LLMClient:
         user_content.extend(images_payload)
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": build_system_prompt(source_id)},
             {"role": "user", "content": user_content},
         ]
 
