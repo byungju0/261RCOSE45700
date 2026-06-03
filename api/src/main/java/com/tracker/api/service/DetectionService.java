@@ -33,7 +33,14 @@ public class DetectionService {
         String typeParam = StringUtils.hasText(type) ? type : null;
         String langParam = StringUtils.hasText(lang) ? lang : null;
 
-        var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "confidence"));
+        var pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(
+                        Sort.Order.asc("tier"),
+                        Sort.Order.desc("detectedAt"),
+                        Sort.Order.desc("confidence"),
+                        Sort.Order.desc("id")));
 
         Page<com.tracker.api.domain.Detection> resultPage =
                 detectionRepository.findFiltered(fromTime, toTime, siteParam, typeParam, langParam, pageable);

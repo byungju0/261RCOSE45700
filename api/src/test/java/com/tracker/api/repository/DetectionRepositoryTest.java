@@ -53,10 +53,54 @@ class DetectionRepositoryTest {
                 });
     }
 
+    @Test
+    void findFiltered_ordersByActionPriorityThenLatestDetection() {
+        persistDetection("tailstar.net", "매크로_판매", "ko", "T2", 0.99,
+                Instant.parse("2026-04-24T14:32:00Z"));
+        persistDetection("tailstar.net", "핵_치트", "ko", "T1", 0.80,
+                Instant.parse("2026-04-24T14:31:00Z"));
+        persistDetection("tailstar.net", "핵_치트", "ko", "T1", 0.75,
+                Instant.parse("2026-04-24T14:33:00Z"));
+        entityManager.flush();
+        entityManager.clear();
+
+        var result = detectionRepository.findFiltered(
+                null,
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(
+                        0,
+                        20,
+                        Sort.by(
+                                Sort.Order.asc("tier"),
+                                Sort.Order.desc("detectedAt"),
+                                Sort.Order.desc("confidence"),
+                                Sort.Order.desc("id"))));
+
+        assertThat(result.getContent())
+                .extracting(Detection::getTier, Detection::getConfidence, Detection::getDetectedAt)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("T1", 0.75, Instant.parse("2026-04-24T14:33:00Z")),
+                        org.assertj.core.groups.Tuple.tuple("T1", 0.80, Instant.parse("2026-04-24T14:31:00Z")),
+                        org.assertj.core.groups.Tuple.tuple("T2", 0.99, Instant.parse("2026-04-24T14:32:00Z")));
+    }
+
     private void persistDetection(
             String siteName,
             String type,
             String language,
+            double confidence,
+            Instant detectedAt) {
+        persistDetection(siteName, type, language, "T2", confidence, detectedAt);
+    }
+
+    private void persistDetection(
+            String siteName,
+            String type,
+            String language,
+            String tier,
             double confidence,
             Instant detectedAt) {
 
@@ -78,7 +122,7 @@ class DetectionRepositoryTest {
         ReflectionTestUtils.setField(detection, "post", post);
         ReflectionTestUtils.setField(detection, "illegal", true);
         ReflectionTestUtils.setField(detection, "type", type);
-        ReflectionTestUtils.setField(detection, "tier", "T2");
+        ReflectionTestUtils.setField(detection, "tier", tier);
         ReflectionTestUtils.setField(detection, "confidence", confidence);
         ReflectionTestUtils.setField(detection, "reason", "reason");
         ReflectionTestUtils.setField(detection, "modelVersion", "test-model");

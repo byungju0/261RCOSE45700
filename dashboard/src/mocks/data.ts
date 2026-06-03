@@ -127,8 +127,13 @@ function generateMockDetections(count: number): Detection[] {
     });
   }
 
-  // 신뢰도 내림차순 정렬 (Story 4.5 AC: 정렬)
-  detections.sort((a, b) => b.confidence - a.confidence);
+  // 조치 우선순위순: T1→T4, 같은 tier 안에서는 최신 탐지와 신뢰도로 안정 정렬.
+  detections.sort((a, b) =>
+    a.tier.localeCompare(b.tier) ||
+    Date.parse(b.detectedAt) - Date.parse(a.detectedAt) ||
+    b.confidence - a.confidence ||
+    b.id - a.id
+  );
 
   return detections;
 }

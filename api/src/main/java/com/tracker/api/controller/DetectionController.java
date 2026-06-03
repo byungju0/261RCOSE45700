@@ -26,7 +26,7 @@ public class DetectionController {
     private final DetectionService detectionService;
 
     @GetMapping("/detections")
-    @Operation(summary = "탐지 목록 조회", description = "confidence >= 0.70 필터 항상 적용. confidence 내림차순 정렬.")
+    @Operation(summary = "탐지 목록 조회", description = "confidence >= 0.70 필터 항상 적용. tier 오름차순 후 탐지시각/신뢰도/id 내림차순 정렬.")
     public ResponseEntity<DetectionListResponse> getDetections(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
