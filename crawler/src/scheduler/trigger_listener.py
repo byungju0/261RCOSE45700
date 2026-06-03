@@ -13,7 +13,11 @@ from crawler.src.scheduler.crawl_job_progress import (
     CrawlTriggerCommand,
     parse_trigger_command,
 )
-from shared.config.redis_config import REDIS_CHANNEL_CRAWL_TRIGGER, REDIS_MQ_DB
+from shared.config.redis_config import (
+    REDIS_CHANNEL_CRAWL_TRIGGER,
+    REDIS_MQ_DB,
+    redis_auth_kwargs,
+)
 from shared.correlation_id import generate
 from shared.structured_logger import get_logger
 
@@ -37,7 +41,10 @@ class TriggerListener:
         while True:
             try:
                 async with aioredis.from_url(
-                    self._redis_url, db=REDIS_MQ_DB, decode_responses=True
+                    self._redis_url,
+                    db=REDIS_MQ_DB,
+                    decode_responses=True,
+                    **redis_auth_kwargs(self._redis_url),
                 ) as client:
                     async with client.pubsub() as pubsub:
                         await pubsub.subscribe(REDIS_CHANNEL_CRAWL_TRIGGER)

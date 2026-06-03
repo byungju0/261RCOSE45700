@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { LineChart } from '@/components/charts/LineChart';
@@ -39,7 +39,10 @@ export function DashboardPage() {
   const hotspots = buildHotspots(detectionData.content);
 
   const isEmpty = data.todayCount === 0;
-  const todayDate = new Date().toLocaleDateString('en-CA');
+  const todayDate = useMemo(
+    () => new Date(dataUpdatedAt).toLocaleDateString('en-CA'),
+    [dataUpdatedAt],
+  );
   const today = new Date(dataUpdatedAt).toLocaleString('ko-KR', {
     year: 'numeric',
     month: '2-digit',

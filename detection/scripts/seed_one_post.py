@@ -25,7 +25,12 @@ if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
 
 import redis
-from shared.config.redis_config import REDIS_KEY_POSTS_QUEUE, REDIS_MQ_DB
+from shared.config.redis_config import (
+    REDIS_KEY_POSTS_QUEUE,
+    REDIS_MQ_DB,
+    get_redis_url,
+    redis_auth_kwargs,
+)
 from shared.models.crawl_event import CrawlEvent
 
 
@@ -46,8 +51,10 @@ def main() -> int:
         correlation_id=f"smoke-{args.post_id}",
     )
 
-    url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-    client = redis.from_url(url, db=REDIS_MQ_DB, decode_responses=True)
+    url = get_redis_url()
+    client = redis.from_url(
+        url, db=REDIS_MQ_DB, decode_responses=True, **redis_auth_kwargs(url)
+    )
     client.lpush(REDIS_KEY_POSTS_QUEUE, event.to_json())
     length = client.llen(REDIS_KEY_POSTS_QUEUE)
     print(f"[OK] posts:queue LPUSH — post_id={args.post_id} length={length}")

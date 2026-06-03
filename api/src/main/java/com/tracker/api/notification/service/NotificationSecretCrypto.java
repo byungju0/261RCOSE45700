@@ -21,7 +21,10 @@ public class NotificationSecretCrypto {
     private final SecureRandom random = new SecureRandom();
 
     public NotificationSecretCrypto(
-            @Value("${tracker.notifications.encryption-key:dev-notification-key-change-me-32}") String secret) {
+            @Value("${tracker.notifications.encryption-key}") String secret) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("NOTIFICATION_ENCRYPTION_KEY 환경변수 미설정");
+        }
         this.key = new SecretKeySpec(sha256(secret), "AES");
     }
 

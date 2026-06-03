@@ -29,7 +29,12 @@ from crawler.src.scheduler.crawl_job_progress import (
 from crawler.src.scheduler.trigger_listener import TriggerListener
 from crawler.src.sites.registry import SiteConfig, get_enabled_sites
 from crawler.src.storage import PostStorage
-from shared.config.redis_config import REDIS_DEDUP_DB, REDIS_MQ_DB
+from shared.config.redis_config import (
+    REDIS_DEDUP_DB,
+    REDIS_MQ_DB,
+    get_redis_url,
+    redis_auth_kwargs,
+)
 from shared.correlation_id import generate
 from shared.structured_logger import get_logger
 
@@ -495,9 +500,14 @@ class CrawlScheduler:
     """APScheduler + TriggerListener 통합 스케줄러."""
 
     def __init__(self) -> None:
-        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-        mq_client = redis.from_url(redis_url, db=REDIS_MQ_DB, decode_responses=True)
-        dedup_client = redis.from_url(redis_url, db=REDIS_DEDUP_DB, decode_responses=True)
+        redis_url = get_redis_url()
+        auth_kwargs = redis_auth_kwargs(redis_url)
+        mq_client = redis.from_url(
+            redis_url, db=REDIS_MQ_DB, decode_responses=True, **auth_kwargs
+        )
+        dedup_client = redis.from_url(
+            redis_url, db=REDIS_DEDUP_DB, decode_responses=True, **auth_kwargs
+        )
 
         # 같은 ZSET 을 파이프라인과 cleanup 잡이 공유해야 하므로 인스턴스 분리 보관.
         self._url_dedup = UrlDedupChecker(dedup_client)

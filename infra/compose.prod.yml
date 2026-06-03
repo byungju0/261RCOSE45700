@@ -13,13 +13,12 @@
 #
 # 사전 요구사항:
 #   1. /opt/app/                          (chmod 755, owner ubuntu)
-#   2. /opt/app/secrets/openai_api_key    (chmod 600, root:root)
-#   3. /opt/app/secrets/db_password       (chmod 600, root:root)
-#   4. /opt/app/secrets/redis_password    (chmod 600, root:root) — CVE-2025-49844 대응
+#   2. /opt/app/secrets/openai_api_key    (chmod 0444, root:root)
+#   3. /opt/app/secrets/db_password       (chmod 0444, root:root)
+#   4. /opt/app/secrets/redis_password    (chmod 0444, root:root) — CVE-2025-49844 대응
 #   5. /opt/app/.env                      (chmod 600) — REDIS_HOST=redis (compose 내부)
-#      REDIS_URL=redis://:$(cat /opt/app/secrets/redis_password)@redis:6379 으로
-#      설정해야 Python(crawler/detection) 서비스가 인증 통과. Spring은 secret-shim
-#      이 REDIS_PASSWORD 로 주입 → application.properties ${REDIS_PASSWORD:} 로 처리.
+#      REDIS_URL=redis://redis:6379 으로 설정. Python/Spring 모두 secret-shim이
+#      주입하는 REDIS_PASSWORD를 사용해 인증한다.
 #
 # 16GB 환경이라 mem_limit는 hard cap이 아니라 가벼운 격리 hint 수준으로 둠 —
 # 실제로 16GB의 21%(~3.3GB)도 안 쓰지만 한 컨테이너 폭주가 다른 컨테이너 굶기지

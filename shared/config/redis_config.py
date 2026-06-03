@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import os
+from urllib.parse import urlsplit
+
 REDIS_MQ_DB: int = 0
 REDIS_DEDUP_DB: int = 1
 REDIS_RATELIMIT_DB: int = 2
@@ -15,3 +20,18 @@ REDIS_KEY_LLM_RATE_LIMIT_CLASSIFY: str = "llm:rate_limit:classify"
 
 REDIS_CHANNEL_CRAWL_TRIGGER: str = "crawl:trigger"
 REDIS_KEY_CRAWL_JOB_PREFIX: str = "crawl:jobs:"
+
+
+def get_redis_url() -> str:
+    return os.environ.get("REDIS_URL", "redis://localhost:6379")
+
+
+def redis_auth_kwargs(url: str | None = None) -> dict[str, str]:
+    """Use REDIS_PASSWORD unless credentials are already embedded in REDIS_URL."""
+    redis_url = url or get_redis_url()
+    password = os.environ.get("REDIS_PASSWORD", "")
+    if not password:
+        return {}
+    if urlsplit(redis_url).password is not None:
+        return {}
+    return {"password": password}
