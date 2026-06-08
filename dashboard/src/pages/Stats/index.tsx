@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStatsSuspenseQuery } from '@/api/stats';
+import { useStatsSuspenseQuery, useCrawlPipelineStatsSuspenseQuery } from '@/api/stats';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
@@ -18,6 +18,7 @@ import type { StatsPeriod } from '@/types/api';
 export function StatsPage() {
   const [period, setPeriod] = useState<StatsPeriod>('weekly');
   const { data } = useStatsSuspenseQuery(period);
+  const { data: crawlStats } = useCrawlPipelineStatsSuspenseQuery();
 
   // 'YYYY-MM-DD' → 'M/D' (trend X축 label)
   const trendData =
@@ -130,6 +131,66 @@ export function StatsPage() {
           message={`${period === 'weekly' ? '주간' : '월간'} 기간 동안의 탐지 데이터가 비어 있습니다.`}
         />
       )}
+
+      <ChartCard
+        title="크롤 파이프라인 Funnel"
+        subtitle={crawlStats.recordedAt ? `마지막 실행: ${crawlStats.recordedAt.replace('T', ' ').slice(0, 16)} UTC` : '실행 기록 없음'}
+        empty={crawlStats.listingBoards === 0}
+        emptyMessage="아직 크롤링이 실행되지 않았습니다"
+      >
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-4">
+          <FunnelStat label="보드" value={crawlStats.listingBoards} />
+          <FunnelStat label="후보 발견" value={crawlStats.listingDiscoveredTotal} />
+          <FunnelStat
+            label="선택"
+            value={crawlStats.listingUrlsSelected}
+            sub={`P2 ${crawlStats.selectedP2} · P3 ${crawlStats.selectedP3}`}
+          />
+          <FunnelStat label="시도" value={crawlStats.attempted} />
+          <FunnelStat label="큐 적재" value={crawlStats.enqueued} highlight />
+          <FunnelStat label="URL중복" value={crawlStats.skippedSeenUrl} muted />
+          <FunnelStat label="본문중복" value={crawlStats.skippedDedup} muted />
+          <FunnelStat label="공지/캡차" value={crawlStats.skippedSticky + crawlStats.skippedBlocked} muted />
+          <FunnelStat label="빈글/미확인" value={crawlStats.skippedEmpty + crawlStats.skippedUnknown} muted />
+          <FunnelStat label="실패" value={crawlStats.failed} danger={crawlStats.failed > 0} />
+        </div>
+      </ChartCard>
     </PageContainer>
+  );
+}
+
+function FunnelStat({
+  label,
+  value,
+  sub,
+  highlight = false,
+  muted = false,
+  danger = false,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  highlight?: boolean;
+  muted?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <span
+        className={
+          danger
+            ? 'text-destructive font-mono text-lg font-semibold'
+            : highlight
+              ? 'text-foreground font-mono text-lg font-semibold'
+              : muted
+                ? 'text-muted-foreground font-mono text-base'
+                : 'text-foreground font-mono text-base font-medium'
+        }
+      >
+        {value.toLocaleString()}
+      </span>
+      {sub && <span className="text-muted-foreground text-xs">{sub}</span>}
+    </div>
   );
 }

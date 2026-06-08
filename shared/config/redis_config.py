@@ -20,6 +20,7 @@ REDIS_KEY_LLM_RATE_LIMIT_CLASSIFY: str = "llm:rate_limit:classify"
 
 REDIS_CHANNEL_CRAWL_TRIGGER: str = "crawl:trigger"
 REDIS_KEY_CRAWL_JOB_PREFIX: str = "crawl:jobs:"
+REDIS_KEY_CRAWL_STATS_LATEST: str = "crawl:stats:latest"
 
 
 def get_redis_url() -> str:

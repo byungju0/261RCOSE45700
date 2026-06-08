@@ -2,6 +2,7 @@ package com.tracker.api.controller;
 
 import com.tracker.api.dto.CrawlTriggerResponse;
 import com.tracker.api.dto.CrawlJobStatusResponse;
+import com.tracker.api.dto.CrawlPipelineStatsResponse;
 import com.tracker.api.service.CrawlTriggerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,5 +42,11 @@ public class CrawlController {
     @Operation(summary = "수동 크롤링 진행 상태 조회", description = "Redis에 저장된 수동 크롤링 job 진행률을 반환.")
     public ResponseEntity<CrawlJobStatusResponse> getJobStatus(@PathVariable String jobId) {
         return ResponseEntity.ok(crawlTriggerService.getStatus(jobId));
+    }
+
+    @GetMapping("/crawl/stats")
+    @Operation(summary = "최근 파이프라인 funnel 통계 조회", description = "마지막 크롤링 run 의 listing/validator/dedup 단계별 통계를 반환.")
+    public ResponseEntity<CrawlPipelineStatsResponse> getPipelineStats() {
+        return ResponseEntity.ok(crawlTriggerService.getLatestPipelineStats());
     }
 }

@@ -3,14 +3,14 @@
 > NC 게임(리니지/아이온/BNS/TL 등) 사설서버·매크로·핵 탐지를 위한 한·중·대만권 게시판 크롤링 인프라.
 > 이 문서는 현재 코드의 **상태·기능·운영 다이얼·남은 작업** 을 한 페이지로 정리합니다.
 
-마지막 갱신: 2026-05-19
+마지막 갱신: 2026-06-08
 
 ---
 
 ## 1. 한눈에
 
 - **안정 보드**: 11곳 (인벤 2 + PTT Lineage + Bahamut NC 8)
-- **NC 사용자 글 회수량**: 약 **37 real / run** (`MAX_POSTS_PER_BOARD=10`, `CRAWL_INTERVAL_MINUTES=60` 기준)
+- **운영 수집 profile**: `MAX_POSTS_PER_BOARD=30`, priority budget, detail concurrency 3, Dcard/52pojie serial
 - **인프라**: URL 중복 차단, 본문 SHA256 dedup, 공지·인증벽·캡차 자동 분류, inter-site delay
 - **테스트**: 142 unit/integration passed, ruff clean
 - **detection(LLM)**: 별도 서비스에서 OpenAI 멀티모달 LLM 분류와 RDS 저장 처리
@@ -177,7 +177,17 @@ Redis ZSET 기반 cross-run URL 중복 차단. **fetch 자체를 막아** 대역
 |---|---|---|
 | `SERVICE_NAME` | `crawler` | 로그용 |
 | `LOG_LEVEL` | `DEBUG` | INFO/WARNING 등 |
-| `MAX_POSTS_PER_BOARD` | `10` | 보드 listing 당 최대 시도 raw 후보 수 |
+| `MAX_POSTS_PER_BOARD` | `30` | 보드 listing 당 최대 raw 후보 수 |
+| `CRAWL_PRIORITY_BUDGET_ENABLED` | `true` | 제목 hard filter 대신 priority budget 적용 |
+| `CRAWL_P3_DEFAULT_CAP_PER_BOARD` | `1` | 일반 source P3 샘플 cap |
+| `CRAWL_P3_MIXED_CAP_PER_BOARD` | `5` | Dcard/PTT mixed source P3 샘플 cap |
+| `CRAWL_P3_52POJIE_CAP_PER_BOARD` | `1` | 52pojie P3 샘플 cap |
+| `CRAWL_DETAIL_FETCH_CONCURRENCY` | `3` | 운영 detail fetch 기본 병렬성 |
+| `CRAWL_DETAIL_SOURCE_CONCURRENCY` | `dcard=1,dcard_online=1,52pojie=1` | 민감 source serial 처리 |
+| `CRAWL_DETAIL_FETCH_STAGGER_SECONDS` | `0.25` | detail batch 시작 stagger |
+| `CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES` | `0` | Dcard Cloudflare retry 기본 off |
+| `CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS` | `0` | source cooldown 기본 off |
+| `CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS` | `0` | challenge cooldown 기본 off |
 | `CRAWL_INTERVAL_MINUTES` | `60` | APScheduler 주기 |
 | `INTER_SITE_DELAY_SECONDS` | `15` | 사이트 전환 휴식 (±25% jitter) |
 | `INTER_BOARD_DELAY_SECONDS` | `3` | 보드 전환 휴식 (±25% jitter) |
@@ -191,10 +201,10 @@ Redis ZSET 기반 cross-run URL 중복 차단. **fetch 자체를 막아** 대역
 
 | 모드 | `MAX_POSTS_PER_BOARD` | `CRAWL_INTERVAL_MINUTES` | 예상 결과 |
 |---|---|---|---|
-| 현재(균형) | 10 | 60 | 시간당 ~40 real |
-| 고빈도 | 5 | 30 | 30분당 ~20 real (더 fresh) |
-| 저부하 | 5 | 120 | 2시간당 ~20 real |
-| 최대 수확 | 20 | 60 | 시간당 ~70 real (anti-bot 위험↑) |
+| 운영 기본 | 30 + priority budget | 60 | EC2 1대 기준 안정/비용 균형 |
+| EC2 빠른 실험 | 30 + priority budget | 60 | `CRAWL_DETAIL_FETCH_CONCURRENCY=4`만 1단계 실험 |
+| 저부하 | 30 + priority budget | 120 | 2시간 주기, 비용/부하 절감 |
+| 로컬 probe | 별도 | 수동 | `DETAIL_PROBE_FAST_MODE=1`, `DETAIL_PROBE_CONCURRENCY=10` |
 
 UrlDedupChecker 덕분에 인터벌 단축해도 같은 URL 재fetch 안 함.
 
@@ -265,7 +275,17 @@ uv run python scripts/smoke_each_site.py bahamut_tl
 
 # 운영 (Redis 필요)
 REDIS_URL=redis://localhost:6379 \
-MAX_POSTS_PER_BOARD=10 \
+MAX_POSTS_PER_BOARD=30 \
+CRAWL_PRIORITY_BUDGET_ENABLED=true \
+CRAWL_P3_DEFAULT_CAP_PER_BOARD=1 \
+CRAWL_P3_MIXED_CAP_PER_BOARD=5 \
+CRAWL_P3_52POJIE_CAP_PER_BOARD=1 \
+CRAWL_DETAIL_FETCH_CONCURRENCY=3 \
+CRAWL_DETAIL_SOURCE_CONCURRENCY=dcard=1,dcard_online=1,52pojie=1 \
+CRAWL_DETAIL_FETCH_STAGGER_SECONDS=0.25 \
+CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES=0 \
+CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS=0 \
+CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS=0 \
 CRAWL_INTERVAL_MINUTES=60 \
 uv run python -m crawler.src.scheduler.crawl_scheduler
 ```

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import redis
 
-from shared.config.redis_config import REDIS_KEY_CRAWL_JOB_PREFIX
+from shared.config.redis_config import REDIS_KEY_CRAWL_JOB_PREFIX, REDIS_KEY_CRAWL_STATS_LATEST
 
 _JOB_TTL_SECONDS = 6 * 60 * 60
 
@@ -121,6 +121,11 @@ class CrawlJobProgressStore:
             updatedAt=now,
             finishedAt=now,
         )
+
+    def store_pipeline_stats(self, stats: dict[str, int | str]) -> None:
+        """파이프라인 완료 후 funnel 통계를 Redis에 저장. GET /api/crawl/stats 에서 읽는다."""
+        data = {**stats, "recordedAt": stats.get("recordedAt") or _now()}
+        self._redis.set(REDIS_KEY_CRAWL_STATS_LATEST, json.dumps(data), ex=_JOB_TTL_SECONDS * 7)
 
     def _update(self, job_id: str, **fields: str) -> None:
         if not job_id:

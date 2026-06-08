@@ -35,15 +35,17 @@ from crawl4ai.async_configs import CacheMode  # noqa: E402
 
 from crawler.src.crawl4ai_crawler import Crawl4AICrawler  # noqa: E402
 from crawler.src.preprocessor.content_validator import PostValidation, validate  # noqa: E402
+from crawler.src.scheduler.crawl_scheduler import _expand_page_urls, _extract_post_url_candidates  # noqa: E402
 from crawler.src.sites.registry import SITES, SiteConfig  # noqa: E402
 
 
-async def _diagnose_board(site: SiteConfig) -> dict:
+async def _diagnose_board(site: SiteConfig, board_url: str | None = None, *, limit: int = 5) -> dict:
     """게시판 페이지를 직접 fetch 해서 (1) 성공 여부 (2) 페이지에 잡힌 링크 수
-    (3) 패턴 매칭 링크 (4) error_message 까지 모두 회수."""
+    (3) 패턴 매칭 링크 최대 limit개 (4) error_message 까지 모두 회수.
+
+    board_url 을 명시하면 해당 URL 을 사용하고, 없으면 site.board_urls[0] 을 사용한다.
+    """
     browser_kwargs = dict(headless=True, enable_stealth=True, verbose=False)
-    if site.proxy is not None:
-        browser_kwargs["proxy_config"] = site.proxy
     if site.headers is not None:
         browser_kwargs["headers"] = site.headers
     if site.user_agent_mode is not None:
@@ -76,13 +78,17 @@ async def _diagnose_board(site: SiteConfig) -> dict:
         run_kwargs["exclude_social_media_links"] = True
     if site.exclude_external_links is not None:
         run_kwargs["exclude_external_links"] = site.exclude_external_links
+    if site.proxy is not None:
+        run_kwargs["proxy_config"] = site.proxy
+    if site.max_retries:
+        run_kwargs["max_retries"] = site.max_retries
     run = CrawlerRunConfig(**run_kwargs)
 
-    arun_kwargs: dict = {"url": site.board_urls[0], "config": run}
+    arun_kwargs: dict = {"url": board_url or site.board_urls[0], "config": run}
     if site.cookies:
         arun_kwargs["cookies"] = site.cookies
 
-    out = {"ok": False, "error": "", "total_links": 0, "matched": [], "samples": [], "html_len": 0}
+    out: dict = {"ok": False, "error": "", "total_links": 0, "matched": [], "samples": [], "html_len": 0, "next_board_url": None}
     try:
         async with AsyncWebCrawler(config=cfg) as cr:
             res = await cr.arun(**arun_kwargs)
@@ -100,24 +106,24 @@ async def _diagnose_board(site: SiteConfig) -> dict:
     external = (res.links.get("external") or []) if res.links else []
     all_links = internal + external
     out["total_links"] = len(all_links)
-    pat = re.compile(site.post_url_pattern)
-    keywords_lower = [k.lower() for k in (site.title_keywords or [])]
-    matched: list[str] = []
-    filtered_by_title = 0
-    for link in all_links:
-        full = (link.get("href") or "")
-        href = full.split("?")[0]
-        title = (link.get("text") or link.get("title") or "")
-        candidate = full if pat.match(full) else (href if pat.match(href) else None)
-        if not candidate:
-            continue
-        if keywords_lower and not any(k in title.lower() for k in keywords_lower):
-            filtered_by_title += 1
-            continue
-        matched.append(candidate)
-    out["matched"] = matched[:5]
-    out["title_filtered"] = filtered_by_title
+    candidates = _extract_post_url_candidates(
+        all_links,
+        site.post_url_pattern,
+        title_keywords=site.title_keywords,
+    )
+    keyword_matched = sum(1 for candidate in candidates if candidate.keyword_matched)
+    out["pattern_matched_total"] = len(candidates)
+    out["matched"] = [candidate.url for candidate in candidates[:limit]]
+    out["keyword_matched"] = keyword_matched
+    out["keyword_unmatched"] = len(candidates) - keyword_matched
     out["samples"] = [(link.get("href") or "")[:90] for link in all_links[:6]]
+    if site.prev_page_link_text:
+        for lk in all_links:
+            if site.prev_page_link_text in (lk.get("text") or ""):
+                href = lk.get("href") or ""
+                if href:
+                    out["next_board_url"] = href
+                    break
     return out
 
 
@@ -174,6 +180,7 @@ async def _crawl_one(crawler: Crawl4AICrawler, site_id: str, site: SiteConfig, u
                 headers=site.headers,
                 page_timeout=site.page_timeout,
                 proxy=site.proxy,
+                max_retries=site.max_retries,
                 js_code=site.js_code,
                 delay_before_return_html=site.delay_before_return_html,
                 scan_full_page=site.scan_full_page,
@@ -198,11 +205,22 @@ async def _crawl_one(crawler: Crawl4AICrawler, site_id: str, site: SiteConfig, u
     return probe
 
 
+_SKIP_DEFAULT = {"tieba", "nga"}    # 중국 본토 IP 필수 — 프록시 없이 의미 X
+
+# 사이트 간 휴식 — anti-bot rate limit(Bahamut ACS-GOTO 등) 회피.
+_INTER_SITE_DELAY = float(os.environ.get("SMOKE_INTER_SITE_DELAY", "12"))
+
+# smoke 당 검증 게시글 수.
+# 기본 5 (빠른 확인). 15 또는 30으로 올리면 rate-limit/elapsed 실측 가능.
+# 예: SMOKE_POSTS_PER_SITE=15 python scripts/smoke_each_site.py ptt_mobile_game
+_POSTS_PER_SITE = int(os.environ.get("SMOKE_POSTS_PER_SITE", "5"))
+
+
 async def smoke_site(
     site_id: str,
     site: SiteConfig,
     *,
-    posts_per_site: int = 5,
+    posts_per_site: int = _POSTS_PER_SITE,
 ) -> SiteResult:
     """N개 게시글을 크롤하고 각각 검증해서 real/sticky/auth_wall/… 분류 집계."""
     r = SiteResult(site_id=site_id, name=site.name)
@@ -217,30 +235,73 @@ async def smoke_site(
         f"selector={(site.css_selector or '—')[:40]}\n{bar}"
     )
 
-    # 1) 게시판 페이지 → 매칭 URL N개 회수
-    diag = await _diagnose_board(site)
-    if not diag["ok"]:
-        r.error = diag["error"]
-        print(f"  ✗ 게시판 fetch 실패: {diag['error']}")
-        r.elapsed_s = time.monotonic() - t0
-        return r
+    # 1) 게시판 페이지(들) → 매칭 URL 수집 (pagination 지원)
+    all_matched: list[str] = []
+    seen_urls: set[str] = set()
+
+    async def _fetch_board_page(page_url: str, is_extra_page: bool) -> tuple[dict, bool]:
+        """한 페이지 fetch. (diag, should_abort) 반환."""
+        if is_extra_page:
+            delay = random.uniform(2.0, 4.0)
+            print(f"  ... 페이지 전환 휴식 {delay:.1f}s → {page_url}")
+            await asyncio.sleep(delay)
+        diag = await _diagnose_board(site, page_url, limit=posts_per_site)
+        if not diag["ok"]:
+            print(f"  ✗ 게시판 fetch 실패 ({page_url}): {diag['error']}")
+            return diag, not all_matched  # 아직 후보 없으면 abort
+        matched_count = diag.get("keyword_matched", 0)
+        unmatched_count = diag.get("keyword_unmatched", 0)
+        priority_msg = (
+            f", 키워드매칭 {matched_count}건/미매칭 {unmatched_count}건"
+            if site.title_keywords
+            else ""
+        )
+        page_label = f" (page_url={page_url})" if is_extra_page else ""
+        print(
+            f"  페이지 OK{page_label} (html {diag['html_len']:,}자, 링크 {diag['total_links']}개 중 "
+            f"패턴 매칭 {diag.get('pattern_matched_total', len(diag['matched']))}건, "
+            f"검증 선택 {len(diag['matched'])}건{priority_msg})"
+        )
+        if not diag["matched"] and not all_matched:
+            print("  ⚠ 패턴 미스 — 첫 6개 링크 샘플:")
+            for s in diag["samples"]:
+                print(f"      · {s}")
+            return diag, True  # abort
+        for url in diag["matched"]:
+            if url not in seen_urls:
+                seen_urls.add(url)
+                all_matched.append(url)
+        return diag, False
+
+    for base_url in site.board_urls:
+        if site.prev_page_link_text and site.max_pages > 1:
+            # 동적 pagination: prev_page_link_text 링크를 따라 최대 max_pages 페이지.
+            current_url: str | None = base_url
+            page_num = 0
+            while current_url and page_num < site.max_pages:
+                diag, abort = await _fetch_board_page(current_url, page_num > 0)
+                if abort:
+                    r.error = diag.get("error", "")
+                    r.notes.append("post_url_pattern 매칭 0건")
+                    r.elapsed_s = time.monotonic() - t0
+                    return r
+                page_num += 1
+                current_url = diag.get("next_board_url")
+        else:
+            for page_url in _expand_page_urls(base_url, site):
+                diag, abort = await _fetch_board_page(page_url, page_url != base_url)
+                if abort:
+                    r.error = diag.get("error", "")
+                    r.notes.append("post_url_pattern 매칭 0건")
+                    r.elapsed_s = time.monotonic() - t0
+                    return r
 
     r.board_ok = True
-    matched = diag["matched"]
+    matched = all_matched
     r.post_urls_found = len(matched)
-    tf = diag.get("title_filtered", 0)
-    tf_msg = f", 제목필터 거름 {tf}건" if tf else ""
-    print(f"  페이지 OK (html {diag['html_len']:,}자, 링크 {diag['total_links']}개 중 패턴 매칭 {len(matched)}건{tf_msg})")
-    if not matched:
-        print("  ⚠ 패턴 미스 — 첫 6개 링크 샘플:")
-        for s in diag["samples"]:
-            print(f"      · {s}")
-        r.notes.append("post_url_pattern 매칭 0건")
-        r.elapsed_s = time.monotonic() - t0
-        return r
 
     targets = matched[:posts_per_site]
-    print(f"  → 게시글 {len(targets)}개 검증 시도 (공지 핀 회피 위해 다회 sampling)")
+    print(f"  → 총 후보 {len(matched)}건 중 게시글 {len(targets)}개 검증 시도")
 
     # 2) 각 게시글 크롤 + 검증
     crawler = Crawl4AICrawler(headless=True, output_dir="output/_smoke_tmp")
@@ -262,11 +323,6 @@ async def smoke_site(
     r.elapsed_s = time.monotonic() - t0
     return r
 
-
-_SKIP_DEFAULT = {"tieba", "nga"}    # 중국 본토 IP 필수 — 프록시 없이 의미 X
-
-# 사이트 간 휴식 — anti-bot rate limit(Bahamut ACS-GOTO 등) 회피.
-_INTER_SITE_DELAY = float(os.environ.get("SMOKE_INTER_SITE_DELAY", "12"))
 
 
 def _jittered(base: float, jitter_ratio: float = 0.3) -> float:
@@ -291,13 +347,14 @@ async def main() -> None:
 
     results: list[SiteResult] = []
     site_items = list(sites_to_run.items())
+    print(f"  (게시글 검증 수: {_POSTS_PER_SITE}건/site — SMOKE_POSTS_PER_SITE 로 조정 가능)")
     for idx, (site_id, site) in enumerate(site_items):
         if idx > 0:
             delay = _jittered(_INTER_SITE_DELAY)
             print(f"\n... 사이트 간 휴식 {delay:.1f}s ({site_id} 시작 전, anti-bot 회피) ...")
             await asyncio.sleep(delay)
         try:
-            r = await smoke_site(site_id, site)
+            r = await smoke_site(site_id, site, posts_per_site=_POSTS_PER_SITE)
         except Exception as exc:
             r = SiteResult(site_id=site_id, name=site.name, error=f"unexpected: {exc}")
             traceback.print_exc(limit=2)

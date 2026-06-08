@@ -7,6 +7,7 @@ import org.springframework.data.redis.core.HashOperations;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import java.time.Duration;
 import java.util.Map;
 
@@ -25,6 +26,9 @@ class CrawlTriggerServiceTest {
 
     @Mock
     HashOperations<String, Object, Object> hashOperations;
+
+    @Mock
+    ValueOperations<String, String> valueOperations;
 
     @Test
     void trigger_initializesJobAndPublishesJsonCommand() {
@@ -81,5 +85,58 @@ class CrawlTriggerServiceTest {
         assertThat(status.completedSites()).isEqualTo(3);
         assertThat(status.percent()).isEqualTo(38);
         assertThat(status.failedSites()).containsExactly("tieba");
+    }
+
+    @Test
+    void getLatestPipelineStats_readsStatsJson() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("crawl:stats:latest")).thenReturn("""
+                {
+                  "listingBoards": 41,
+                  "listingDiscoveredTotal": 2136,
+                  "listingUrlsSelected": 1140,
+                  "listingKeywordMatched": 0,
+                  "listingKeywordUnmatched": 2136,
+                  "selectedP0": 0,
+                  "selectedP1": 0,
+                  "selectedP2": 48,
+                  "selectedP3": 62,
+                  "attempted": 95,
+                  "enqueued": 76,
+                  "skippedSeenUrl": 1,
+                  "skippedDedup": 2,
+                  "skippedEmpty": 5,
+                  "skippedSticky": 1,
+                  "skippedBlocked": 2,
+                  "skippedUnknown": 2,
+                  "failed": 0,
+                  "recordedAt": "2026-06-07T02:48:36Z"
+                }
+                """);
+        var service = new CrawlTriggerService(stringRedisTemplate, new ObjectMapper());
+
+        var stats = service.getLatestPipelineStats();
+
+        assertThat(stats.listingBoards()).isEqualTo(41);
+        assertThat(stats.listingDiscoveredTotal()).isEqualTo(2136);
+        assertThat(stats.listingUrlsSelected()).isEqualTo(1140);
+        assertThat(stats.selectedP2()).isEqualTo(48);
+        assertThat(stats.selectedP3()).isEqualTo(62);
+        assertThat(stats.attempted()).isEqualTo(95);
+        assertThat(stats.enqueued()).isEqualTo(76);
+        assertThat(stats.recordedAt()).isEqualTo("2026-06-07T02:48:36Z");
+    }
+
+    @Test
+    void getLatestPipelineStats_returnsZerosWhenMissing() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("crawl:stats:latest")).thenReturn(null);
+        var service = new CrawlTriggerService(stringRedisTemplate, new ObjectMapper());
+
+        var stats = service.getLatestPipelineStats();
+
+        assertThat(stats.listingBoards()).isZero();
+        assertThat(stats.enqueued()).isZero();
+        assertThat(stats.recordedAt()).isEmpty();
     }
 }

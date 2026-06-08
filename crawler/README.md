@@ -58,17 +58,27 @@ crawler_test/
 ## 운영 (Redis 필요)
 
 ```bash
-# 가장 단순한 형태 — 기본 60분 주기, 보드당 10건
+# 가장 단순한 형태 — 기본 60분 주기, 운영 profile 사용
 REDIS_URL=redis://localhost:6379 \
 uv run python -m crawler.src.scheduler.crawl_scheduler
 
-# 30분 주기, S3 업로드, 보드당 5건
+# EC2 운영 권장값을 명시해서 실행
 REDIS_URL=redis://localhost:6379 \
-CRAWL_INTERVAL_MINUTES=30 \
-MAX_POSTS_PER_BOARD=5 \
-ENABLE_S3_UPLOAD=true \
-S3_BUCKET_NAME=my-bucket \
-AWS_REGION=ap-northeast-2 \
+CRAWL_INTERVAL_MINUTES=60 \
+MAX_POSTS_PER_BOARD=30 \
+CRAWL_PRIORITY_BUDGET_ENABLED=true \
+CRAWL_P3_DEFAULT_CAP_PER_BOARD=1 \
+CRAWL_P3_MIXED_CAP_PER_BOARD=5 \
+CRAWL_P3_52POJIE_CAP_PER_BOARD=1 \
+CRAWL_DETAIL_FETCH_CONCURRENCY=3 \
+CRAWL_DETAIL_SOURCE_CONCURRENCY=dcard=1,dcard_online=1,52pojie=1 \
+CRAWL_DETAIL_FETCH_STAGGER_SECONDS=0.25 \
+CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES=0 \
+CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS=0 \
+CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS=0 \
+INTER_SITE_DELAY_SECONDS=15 \
+INTER_BOARD_DELAY_SECONDS=3 \
+ENABLE_S3_UPLOAD=false \
 uv run python -m crawler.src.scheduler.crawl_scheduler
 ```
 

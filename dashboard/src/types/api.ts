@@ -115,6 +115,28 @@ export interface CrawlJobStatusResponse {
 
 export type StatsPeriod = 'weekly' | 'monthly';
 
+export interface CrawlPipelineStatsResponse {
+  listingBoards: number;
+  listingDiscoveredTotal: number;
+  listingUrlsSelected: number;
+  listingKeywordMatched: number;
+  listingKeywordUnmatched: number;
+  selectedP0: number;
+  selectedP1: number;
+  selectedP2: number;
+  selectedP3: number;
+  attempted: number;
+  enqueued: number;
+  skippedSeenUrl: number;
+  skippedDedup: number;
+  skippedEmpty: number;
+  skippedSticky: number;
+  skippedBlocked: number;
+  skippedUnknown: number;
+  failed: number;
+  recordedAt: string;
+}
+
 export type NotificationChannelType =
   | 'GENERIC_WEBHOOK'
   | 'DISCORD'

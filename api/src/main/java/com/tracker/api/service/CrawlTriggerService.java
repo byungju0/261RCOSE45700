@@ -3,6 +3,7 @@ package com.tracker.api.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tracker.api.dto.CrawlJobStatusResponse;
+import com.tracker.api.dto.CrawlPipelineStatsResponse;
 import com.tracker.api.exception.CrawlJobNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,6 +20,7 @@ public class CrawlTriggerService {
 
     private static final String CRAWL_TRIGGER_CHANNEL = "crawl:trigger";
     private static final String CRAWL_JOB_KEY_PREFIX = "crawl:jobs:";
+    private static final String CRAWL_STATS_LATEST_KEY = "crawl:stats:latest";
     private static final Duration CRAWL_JOB_TTL = Duration.ofHours(6);
 
     private final StringRedisTemplate stringRedisTemplate;
@@ -71,6 +73,52 @@ public class CrawlTriggerService {
                 value(raw, "updatedAt"),
                 value(raw, "finishedAt")
         );
+    }
+
+    public CrawlPipelineStatsResponse getLatestPipelineStats() {
+        String json = stringRedisTemplate.opsForValue().get(CRAWL_STATS_LATEST_KEY);
+        if (json == null || json.isBlank()) {
+            return new CrawlPipelineStatsResponse(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = objectMapper.readValue(json, Map.class);
+            return new CrawlPipelineStatsResponse(
+                    intFrom(data, "listingBoards"),
+                    intFrom(data, "listingDiscoveredTotal"),
+                    intFrom(data, "listingUrlsSelected"),
+                    intFrom(data, "listingKeywordMatched"),
+                    intFrom(data, "listingKeywordUnmatched"),
+                    intFrom(data, "selectedP0"),
+                    intFrom(data, "selectedP1"),
+                    intFrom(data, "selectedP2"),
+                    intFrom(data, "selectedP3"),
+                    intFrom(data, "attempted"),
+                    intFrom(data, "enqueued"),
+                    intFrom(data, "skippedSeenUrl"),
+                    intFrom(data, "skippedDedup"),
+                    intFrom(data, "skippedEmpty"),
+                    intFrom(data, "skippedSticky"),
+                    intFrom(data, "skippedBlocked"),
+                    intFrom(data, "skippedUnknown"),
+                    intFrom(data, "failed"),
+                    strFrom(data, "recordedAt")
+            );
+        } catch (JsonProcessingException e) {
+            return new CrawlPipelineStatsResponse(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+        }
+    }
+
+    private int intFrom(Map<String, Object> data, String key) {
+        Object v = data.get(key);
+        if (v == null) return 0;
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private String strFrom(Map<String, Object> data, String key) {
+        Object v = data.get(key);
+        return v == null ? "" : v.toString();
     }
 
     private String triggerPayload(String jobId, String correlationId, String requestedAt) {
