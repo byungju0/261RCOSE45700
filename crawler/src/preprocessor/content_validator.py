@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -132,6 +133,10 @@ def validate_ptt(markdown: str, url: str) -> PostValidation:
     return PostValidation(True, "real", "PTT 4헤더 완전 + 일반 글")
 
 
+_DCARD_POST_URL_RE = re.compile(r"https://www\.dcard\.tw/f/[A-Za-z0-9_-]+/p/\d+")
+_DCARD_BODY_MIN_LEN = 300
+
+
 def validate_dcard(markdown: str, url: str) -> PostValidation:
     """Dcard: 사용자 글은 보통 ## #카테고리 형태로 시작 + 작성시간(전/昨天/今天) 마커."""
     g = _generic_guard(markdown)
@@ -145,6 +150,8 @@ def validate_dcard(markdown: str, url: str) -> PostValidation:
         return PostValidation(True, "real", "Dcard 카테고리+시간 마커")
     if has_category:
         return PostValidation(True, "real", "Dcard 카테고리 마커 (시간 누락은 허용)")
+    if _DCARD_POST_URL_RE.match(url) and len(markdown.strip()) >= _DCARD_BODY_MIN_LEN:
+        return PostValidation(True, "real", "Dcard 게시글 URL + 충분한 본문 길이")
     return PostValidation(False, "unknown", "Dcard 카테고리/시간 마커 미발견")
 
 
@@ -155,7 +162,7 @@ _BAHAMUT_OFFICIAL_MARKERS: tuple[str, ...] = (
 )
 
 
-_BAHAMUT_BODY_MIN_LEN = 200
+_BAHAMUT_BODY_MIN_LEN = 50
 
 
 def validate_bahamut(markdown: str, url: str) -> PostValidation:
@@ -169,6 +176,10 @@ def validate_bahamut(markdown: str, url: str) -> PostValidation:
     unknown 으로 분류되던 회귀(2026-05) 직접 분석 → URL 정규식이 이미
     C.php?bsn=N&snA=N 로 게시글임을 보장 + sticky 마커가 selector 통과 후에도
     남는 사실 확인 → 길이 기반이 가장 정확.
+
+    2026-06-07 detail probe 에서 50~200자 사이의 짧은 사용자 글에도 외掛/계정/
+    다운로드 신호가 자주 나타났다. generic guard 의 50자 미만 short 기준은
+    유지하되, Bahamut 전용 200자 장벽은 제거한다.
     """
     g = _generic_guard(markdown)
     if g:

@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import httpx
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 from crawl4ai.async_configs import CacheMode
+from crawl4ai.async_dispatcher import MemoryAdaptiveDispatcher, RateLimiter
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
@@ -26,10 +27,19 @@ class CrawlResult:
     fit_markdown: str
     images: list[dict] = field(default_factory=list)
     downloaded_images: list[Path] = field(default_factory=list)
+    crawl_stats: dict = field(default_factory=dict)
 
     @property
     def markdown(self) -> str:
         return self.fit_markdown or self.raw_markdown
+
+
+@dataclass
+class CrawlFetchOutcome:
+    url: str
+    correlation_id: str
+    result: CrawlResult | None = None
+    error: Exception | None = None
 
 
 class Crawl4AICrawler:
@@ -51,7 +61,7 @@ class Crawl4AICrawler:
         self._default_proxy = proxy
         self._default_headers = headers
 
-        self._browser_config = self._build_browser_config(proxy=proxy, headers=headers)
+        self._browser_config = self._build_browser_config(headers=headers)
 
         self._base_run_kwargs: dict = dict(
             cache_mode=CacheMode.BYPASS,
@@ -68,12 +78,10 @@ class Crawl4AICrawler:
                 )
             ),
         )
-        self._base_run_config = CrawlerRunConfig(**self._base_run_kwargs)
 
     def _build_browser_config(
         self,
         *,
-        proxy: dict | None,
         headers: dict[str, str] | None,
         user_agent_mode: str | None = None,
     ) -> BrowserConfig:
@@ -83,8 +91,6 @@ class Crawl4AICrawler:
             enable_stealth=True,
             ignore_https_errors=True,
         )
-        if proxy is not None:
-            kwargs["proxy_config"] = proxy
         if headers is not None:
             kwargs["headers"] = headers
         if user_agent_mode is not None:
@@ -104,11 +110,16 @@ class Crawl4AICrawler:
         virtual_scroll_config: dict | None = None,
         wait_until: str | None = None,
         simulate_user: bool = False,
+        override_navigator: bool = False,
         c4a_script: list[str] | None = None,
         exclude_social_media_links: bool = True,
         exclude_external_links: bool | None = None,
         screenshot: bool = False,
         pdf: bool = False,
+        proxy_config: dict | str | None = None,
+        max_retries: int = 0,
+        stream: bool = False,
+        session_id: str | None = None,
     ) -> CrawlerRunConfig:
         kwargs = dict(self._base_run_kwargs)
         if css_selector is not None:
@@ -131,6 +142,8 @@ class Crawl4AICrawler:
             kwargs["wait_until"] = wait_until
         if simulate_user:
             kwargs["simulate_user"] = True
+        if override_navigator:
+            kwargs["override_navigator"] = True
         if c4a_script is not None:
             kwargs["c4a_script"] = c4a_script
         if exclude_social_media_links:
@@ -141,7 +154,77 @@ class Crawl4AICrawler:
             kwargs["screenshot"] = True
         if pdf:
             kwargs["pdf"] = True
+        if proxy_config is not None:
+            kwargs["proxy_config"] = proxy_config
+        if max_retries:
+            kwargs["max_retries"] = max_retries
+        if stream:
+            kwargs["stream"] = True
+        if session_id is not None:
+            kwargs["session_id"] = session_id
         return CrawlerRunConfig(**kwargs)
+
+    def _build_dispatcher(
+        self,
+        *,
+        concurrency: int,
+        base_delay: tuple[float, float],
+        max_retries: int,
+    ) -> MemoryAdaptiveDispatcher:
+        return MemoryAdaptiveDispatcher(
+            memory_threshold_percent=85.0,
+            max_session_permit=max(1, concurrency),
+            rate_limiter=RateLimiter(
+                base_delay=base_delay,
+                max_delay=30.0,
+                max_retries=max_retries,
+            ),
+        )
+
+    async def _to_crawl_result(
+        self,
+        result,
+        *,
+        source_url: str,
+        correlation_id: str,
+        download_images: bool,
+        output_dir: Path | str | None,
+        image_filter: Callable[[dict], bool] | None,
+    ) -> CrawlResult:
+        md = result.markdown
+        if hasattr(md, "raw_markdown"):
+            raw_md = md.raw_markdown or ""
+            fit_md = md.fit_markdown or ""
+        else:
+            raw_md = str(md) if md else ""
+            fit_md = ""
+
+        all_images = (result.media or {}).get("images") or []
+        candidates = [img for img in all_images if img.get("src", "").startswith("http")]
+
+        if image_filter is not None:
+            candidates = [img for img in candidates if image_filter(img)]
+
+        save_dir = Path(output_dir) if output_dir else self._output_dir
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        downloaded: list[Path] = []
+        if download_images and candidates:
+            downloaded = await self._download_images(
+                [img["src"] for img in candidates],
+                referer=source_url,
+                save_dir=save_dir,
+                correlation_id=correlation_id,
+            )
+
+        return CrawlResult(
+            url=source_url,
+            raw_markdown=raw_md,
+            fit_markdown=fit_md,
+            images=candidates,
+            downloaded_images=downloaded,
+            crawl_stats=getattr(result, "crawl_stats", {}) or {},
+        )
 
     async def fetch(
         self,
@@ -165,12 +248,15 @@ class Crawl4AICrawler:
         virtual_scroll_config: dict | None = None,
         wait_until: str | None = None,
         simulate_user: bool = False,
+        override_navigator: bool = False,
         user_agent_mode: str | None = None,
         c4a_script: list[str] | None = None,
         exclude_social_media_links: bool = True,
         exclude_external_links: bool | None = None,
         screenshot: bool = False,
         pdf: bool = False,
+        max_retries: int = 0,
+        session_id: str | None = None,
     ) -> CrawlResult:
         _logger.info(
             "크롤링 시작: %s", url,
@@ -188,17 +274,21 @@ class Crawl4AICrawler:
             virtual_scroll_config=virtual_scroll_config,
             wait_until=wait_until,
             simulate_user=simulate_user,
+            override_navigator=override_navigator,
             c4a_script=c4a_script,
             exclude_social_media_links=exclude_social_media_links,
             exclude_external_links=exclude_external_links,
             screenshot=screenshot,
             pdf=pdf,
+            proxy_config=proxy if proxy is not None else self._default_proxy,
+            max_retries=max_retries,
+            session_id=session_id,
         )
 
-        # proxy / headers / user_agent_mode 가 호출자 지정이면 per-call BrowserConfig.
-        if proxy is not None or headers is not None or user_agent_mode is not None:
+        # headers / user_agent_mode 는 BrowserConfig 영역. proxy 는 최신 Crawl4AI
+        # 권장 방식에 맞춰 CrawlerRunConfig.proxy_config 로 전달한다.
+        if headers is not None or user_agent_mode is not None:
             browser_config = self._build_browser_config(
-                proxy=proxy if proxy is not None else self._default_proxy,
                 headers=headers if headers is not None else self._default_headers,
                 user_agent_mode=user_agent_mode,
             )
@@ -220,47 +310,176 @@ class Crawl4AICrawler:
             raise CrawlerException(
                 f"크롤링 실패: {result.error_message or 'unknown error'}",
                 correlation_id=correlation_id,
-            )
-
-        md = result.markdown
-        if hasattr(md, "raw_markdown"):
-            raw_md = md.raw_markdown or ""
-            fit_md = md.fit_markdown or ""
-        else:
-            raw_md = str(md) if md else ""
-            fit_md = ""
-
-        all_images = (result.media or {}).get("images") or []
-
-        candidates = [img for img in all_images if img.get("src", "").startswith("http")]
-
-        if image_filter is not None:
-            candidates = [img for img in candidates if image_filter(img)]
-
-        save_dir = Path(output_dir) if output_dir else self._output_dir
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        downloaded: list[Path] = []
-        if download_images and candidates:
-            downloaded = await self._download_images(
-                [img["src"] for img in candidates],
-                referer=url,
-                save_dir=save_dir,
-                correlation_id=correlation_id,
+                crawl_stats=getattr(result, "crawl_stats", {}) or {},
             )
 
         _logger.info(
-            "크롤링 완료: %s (이미지 %d개)", url, len(candidates),
+            "크롤링 완료: %s", url,
             extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
         )
 
-        return CrawlResult(
-            url=url,
-            raw_markdown=raw_md,
-            fit_markdown=fit_md,
-            images=candidates,
-            downloaded_images=downloaded,
+        return await self._to_crawl_result(
+            result,
+            source_url=url,
+            correlation_id=correlation_id,
+            download_images=download_images,
+            output_dir=output_dir,
+            image_filter=image_filter,
         )
+
+    async def fetch_many(
+        self,
+        urls: list[str],
+        *,
+        correlation_ids: list[str],
+        download_images: bool = True,
+        output_dir: Path | str | None = None,
+        css_selector: str | None = None,
+        image_filter: Callable[[dict], bool] | None = None,
+        cookies: list[dict] | None = None,
+        wait_for: str | None = None,
+        headers: dict[str, str] | None = None,
+        page_timeout: int | None = None,
+        proxy: dict | None = None,
+        js_code: list[str] | None = None,
+        delay_before_return_html: float | None = None,
+        scan_full_page: bool = False,
+        scroll_delay: float | None = None,
+        virtual_scroll_config: dict | None = None,
+        wait_until: str | None = None,
+        simulate_user: bool = False,
+        override_navigator: bool = False,
+        user_agent_mode: str | None = None,
+        c4a_script: list[str] | None = None,
+        exclude_social_media_links: bool = True,
+        exclude_external_links: bool | None = None,
+        screenshot: bool = False,
+        pdf: bool = False,
+        max_retries: int = 0,
+        concurrency: int = 3,
+        rate_limit_delay: tuple[float, float] = (1.0, 2.0),
+        stream: bool = True,
+    ) -> list[CrawlFetchOutcome]:
+        if len(urls) != len(correlation_ids):
+            raise ValueError("urls 와 correlation_ids 길이가 같아야 합니다")
+        if not urls:
+            return []
+
+        _logger.info(
+            "배치 크롤링 시작: count=%d concurrency=%d", len(urls), concurrency,
+            extra={"correlation_id": "", "service": _SERVICE_NAME},
+        )
+
+        run_config = self._build_run_config(
+            css_selector=css_selector,
+            wait_for=wait_for,
+            page_timeout=page_timeout,
+            js_code=js_code,
+            delay_before_return_html=delay_before_return_html,
+            scan_full_page=scan_full_page,
+            scroll_delay=scroll_delay,
+            virtual_scroll_config=virtual_scroll_config,
+            wait_until=wait_until,
+            simulate_user=simulate_user,
+            override_navigator=override_navigator,
+            c4a_script=c4a_script,
+            exclude_social_media_links=exclude_social_media_links,
+            exclude_external_links=exclude_external_links,
+            screenshot=screenshot,
+            pdf=pdf,
+            proxy_config=proxy if proxy is not None else self._default_proxy,
+            max_retries=max_retries,
+            stream=stream,
+        )
+        dispatcher = self._build_dispatcher(
+            concurrency=concurrency,
+            base_delay=rate_limit_delay,
+            max_retries=max_retries,
+        )
+
+        if headers is not None or user_agent_mode is not None:
+            browser_config = self._build_browser_config(
+                headers=headers if headers is not None else self._default_headers,
+                user_agent_mode=user_agent_mode,
+            )
+        else:
+            browser_config = self._browser_config
+
+        arun_kwargs: dict = {
+            "urls": urls,
+            "config": run_config,
+            "dispatcher": dispatcher,
+        }
+        if cookies is not None:
+            arun_kwargs["cookies"] = cookies
+
+        outcomes: list[CrawlFetchOutcome] = []
+        try:
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                results = await crawler.arun_many(**arun_kwargs)
+                if hasattr(results, "__aiter__"):
+                    result_list = [result async for result in results]
+                else:
+                    result_list = list(results)
+        except Exception as exc:
+            return [
+                CrawlFetchOutcome(url=url, correlation_id=cid, error=exc)
+                for url, cid in zip(urls, correlation_ids, strict=True)
+            ]
+
+        by_result_url: dict[str, object] = {}
+        unassigned_results: list[object] = []
+        for result in result_list:
+            result_url = getattr(result, "url", None)
+            if result_url and result_url in urls and result_url not in by_result_url:
+                by_result_url[result_url] = result
+            else:
+                unassigned_results.append(result)
+
+        for url, cid in zip(urls, correlation_ids, strict=True):
+            result = by_result_url.get(url)
+            if result is None and unassigned_results:
+                result = unassigned_results.pop(0)
+            if result is None:
+                outcomes.append(
+                    CrawlFetchOutcome(
+                        url=url,
+                        correlation_id=cid,
+                        error=CrawlerException(
+                            "크롤링 실패: batch result missing",
+                            correlation_id=cid,
+                        ),
+                    )
+                )
+                continue
+            if not result.success:
+                outcomes.append(
+                    CrawlFetchOutcome(
+                        url=url,
+                        correlation_id=cid,
+                        error=CrawlerException(
+                            f"크롤링 실패: {result.error_message or 'unknown error'}",
+                            correlation_id=cid,
+                            crawl_stats=getattr(result, "crawl_stats", {}) or {},
+                        ),
+                    )
+                )
+                continue
+            outcomes.append(
+                CrawlFetchOutcome(
+                    url=url,
+                    correlation_id=cid,
+                    result=await self._to_crawl_result(
+                        result,
+                        source_url=url,
+                        correlation_id=cid,
+                        download_images=download_images,
+                        output_dir=output_dir,
+                        image_filter=image_filter,
+                    ),
+                )
+            )
+        return outcomes
 
     async def _download_images(
         self,

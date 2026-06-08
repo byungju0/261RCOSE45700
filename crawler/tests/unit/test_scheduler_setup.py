@@ -10,6 +10,7 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from crawler.src.scheduler import crawl_scheduler as scheduler_module
 from crawler.src.scheduler.crawl_scheduler import CrawlScheduler
 
 
@@ -63,6 +64,28 @@ class TestSetupScheduleJobsRegistered:
     def test_cleanup_job_coalesce_enabled(self, scheduler_with_mocked_redis):
         job = scheduler_with_mocked_redis._scheduler.get_job("url_dedup_cleanup")
         assert job.coalesce is True
+
+
+class TestOperationalDefaults:
+    def test_crawler_operational_defaults_match_ec2_profile(self):
+        assert scheduler_module._MAX_POSTS_PER_BOARD == 30
+        assert scheduler_module._PRIORITY_BUDGET_ENABLED is True
+        assert scheduler_module._P3_DEFAULT_CAP_PER_BOARD == 1
+        assert scheduler_module._P3_MIXED_CAP_PER_BOARD == 5
+        assert scheduler_module._P3_52POJIE_CAP_PER_BOARD == 1
+        assert scheduler_module._DETAIL_FETCH_CONCURRENCY == 3
+        assert scheduler_module._DETAIL_FETCH_SOURCE_CONCURRENCY == {
+            "dcard": 1,
+            "dcard_online": 1,
+            "52pojie": 1,
+        }
+        assert scheduler_module._DETAIL_FETCH_STAGGER_SECONDS == 0.25
+        assert scheduler_module._DETAIL_CLOUDFLARE_BACKOFF_RETRIES == 0
+        assert scheduler_module._DETAIL_CLOUDFLARE_BACKOFF_SECONDS == 0
+        assert scheduler_module._DETAIL_SOURCE_COOLDOWN_SECONDS == 0
+        assert scheduler_module._DETAIL_CHALLENGE_COOLDOWN_SECONDS == 0
+        assert scheduler_module._INTER_SITE_DELAY_SECONDS == 15
+        assert scheduler_module._INTER_BOARD_DELAY_SECONDS == 3
 
 
 class TestCleanupHandler:

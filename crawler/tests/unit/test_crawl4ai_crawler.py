@@ -14,6 +14,7 @@ def _make_mock_result(
     raw_md: str = "raw text",
     images: list[dict] | None = None,
     error_message: str = "크롤링 실패",
+    crawl_stats: dict | None = None,
 ) -> MagicMock:
     r = MagicMock()
     r.success = success
@@ -27,6 +28,7 @@ def _make_mock_result(
             {"src": "https://example.com/img.jpg", "score": 5, "alt": ""}
         ]
     }
+    r.crawl_stats = crawl_stats or {}
     return r
 
 
@@ -34,6 +36,18 @@ def _patch_crawler(mock_result: MagicMock):
     """AsyncWebCrawler를 patch하는 컨텍스트 매니저 반환."""
     mock_instance = AsyncMock()
     mock_instance.arun = AsyncMock(return_value=mock_result)
+
+    patcher = patch("crawler.src.crawl4ai_crawler.AsyncWebCrawler")
+    MockCrawler = patcher.start()
+    MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+    MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+    return patcher, MockCrawler
+
+
+def _patch_crawler_many(mock_results: list[MagicMock]):
+    """AsyncWebCrawler.arun_many를 patch하는 컨텍스트 매니저 반환."""
+    mock_instance = AsyncMock()
+    mock_instance.arun_many = AsyncMock(return_value=mock_results)
 
     patcher = patch("crawler.src.crawl4ai_crawler.AsyncWebCrawler")
     MockCrawler = patcher.start()
@@ -60,13 +74,15 @@ class TestCrawl4AICrawlerFetch:
             patcher.stop()
 
     async def test_fetch_raises_crawler_exception_on_failure(self, tmp_path):
-        mock_result = _make_mock_result(success=False)
+        stats = {"attempts": 2, "resolved_by": None}
+        mock_result = _make_mock_result(success=False, crawl_stats=stats)
         patcher, _ = _patch_crawler(mock_result)
         try:
             crawler = Crawl4AICrawler(output_dir=str(tmp_path))
             with pytest.raises(CrawlerException) as exc_info:
                 await crawler.fetch(self._URL, correlation_id=self._CID, download_images=False)
             assert exc_info.value.correlation_id == self._CID
+            assert exc_info.value.crawl_stats == stats
         finally:
             patcher.stop()
 
@@ -243,7 +259,69 @@ class TestCrawl4AICrawlerSiteOptions:
         finally:
             patcher.stop()
 
-    async def test_fetch_proxy_builds_per_call_browser_config(self, tmp_path):
+    async def test_fetch_passes_max_retries_to_run_config(self, tmp_path):
+        mock_result = _make_mock_result()
+        patcher, MockCrawler = _patch_crawler(mock_result)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            await crawler.fetch(
+                self._URL,
+                correlation_id=self._CID,
+                download_images=False,
+                max_retries=2,
+            )
+            mock_instance = MockCrawler.return_value.__aenter__.return_value
+            run_config = mock_instance.arun.call_args.kwargs["config"]
+            assert run_config.max_retries == 2
+        finally:
+            patcher.stop()
+
+    async def test_fetch_passes_override_navigator_to_run_config(self, tmp_path):
+        mock_result = _make_mock_result()
+        patcher, MockCrawler = _patch_crawler(mock_result)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            await crawler.fetch(
+                self._URL,
+                correlation_id=self._CID,
+                download_images=False,
+                override_navigator=True,
+            )
+            mock_instance = MockCrawler.return_value.__aenter__.return_value
+            run_config = mock_instance.arun.call_args.kwargs["config"]
+            assert run_config.override_navigator is True
+        finally:
+            patcher.stop()
+
+    async def test_fetch_passes_session_id_to_run_config(self, tmp_path):
+        mock_result = _make_mock_result()
+        patcher, MockCrawler = _patch_crawler(mock_result)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            await crawler.fetch(
+                self._URL,
+                correlation_id=self._CID,
+                download_images=False,
+                session_id="dcard-detail-dcard",
+            )
+            mock_instance = MockCrawler.return_value.__aenter__.return_value
+            run_config = mock_instance.arun.call_args.kwargs["config"]
+            assert run_config.session_id == "dcard-detail-dcard"
+        finally:
+            patcher.stop()
+
+    async def test_fetch_exposes_crawl_stats(self, tmp_path):
+        mock_result = _make_mock_result()
+        mock_result.crawl_stats = {"attempts": 2, "resolved_by": "direct"}
+        patcher, _ = _patch_crawler(mock_result)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            result = await crawler.fetch(self._URL, correlation_id=self._CID, download_images=False)
+            assert result.crawl_stats == {"attempts": 2, "resolved_by": "direct"}
+        finally:
+            patcher.stop()
+
+    async def test_fetch_proxy_passes_proxy_config_to_run_config(self, tmp_path):
         mock_result = _make_mock_result()
         patcher, MockCrawler = _patch_crawler(mock_result)
         try:
@@ -255,13 +333,62 @@ class TestCrawl4AICrawlerSiteOptions:
                 download_images=False,
                 proxy=proxy,
             )
-            # AsyncWebCrawler 가 per-call 으로 다시 호출되며 새 BrowserConfig 가 주입됐는지.
-            # crawl4ai 는 dict 를 ProxyConfig 객체로 감싸므로 server 속성을 통해 비교.
-            ctor_kwargs = MockCrawler.call_args.kwargs
-            browser_cfg = ctor_kwargs.get("config")
-            assert browser_cfg is not None
-            proxy_cfg = getattr(browser_cfg, "proxy_config", None)
+            mock_instance = MockCrawler.return_value.__aenter__.return_value
+            run_config = mock_instance.arun.call_args.kwargs["config"]
+            proxy_cfg = getattr(run_config, "proxy_config", None)
             assert proxy_cfg is not None
             assert getattr(proxy_cfg, "server", None) == proxy["server"]
+        finally:
+            patcher.stop()
+
+    async def test_fetch_many_uses_arun_many_with_dispatcher(self, tmp_path):
+        mock_results = [
+            _make_mock_result(fit_md="fit one", raw_md="raw one"),
+            _make_mock_result(fit_md="fit two", raw_md="raw two"),
+        ]
+        patcher, MockCrawler = _patch_crawler_many(mock_results)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            outcomes = await crawler.fetch_many(
+                [self._URL, "https://www.ptt.cc/bbs/C_Chat/M.456.html"],
+                correlation_ids=["cid-1", "cid-2"],
+                download_images=False,
+                concurrency=2,
+                rate_limit_delay=(0.1, 0.2),
+            )
+
+            mock_instance = MockCrawler.return_value.__aenter__.return_value
+            call_kwargs = mock_instance.arun_many.call_args.kwargs
+            assert call_kwargs["urls"] == [
+                self._URL,
+                "https://www.ptt.cc/bbs/C_Chat/M.456.html",
+            ]
+            assert call_kwargs["dispatcher"] is not None
+            assert call_kwargs["config"].stream is True
+            assert [o.result.markdown for o in outcomes if o.result] == ["fit one", "fit two"]
+            assert all(o.error is None for o in outcomes)
+        finally:
+            patcher.stop()
+
+    async def test_fetch_many_returns_per_url_error_on_failed_result(self, tmp_path):
+        mock_results = [
+            _make_mock_result(fit_md="fit one", raw_md="raw one"),
+            _make_mock_result(success=False, error_message="blocked"),
+        ]
+        patcher, _ = _patch_crawler_many(mock_results)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            outcomes = await crawler.fetch_many(
+                [self._URL, "https://www.ptt.cc/bbs/C_Chat/M.456.html"],
+                correlation_ids=["cid-1", "cid-2"],
+                download_images=False,
+                concurrency=2,
+            )
+
+            assert outcomes[0].result is not None
+            assert outcomes[0].error is None
+            assert outcomes[1].result is None
+            assert outcomes[1].error is not None
+            assert "blocked" in str(outcomes[1].error)
         finally:
             patcher.stop()

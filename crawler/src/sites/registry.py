@@ -23,6 +23,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field  # noqa: F401
 
 
+def _env_enabled(name: str) -> bool:
+    return os.environ.get(name, "").lower() in ("1", "true", "yes")
+
+
+def _dcard_wait_until() -> str | None:
+    return "load" if _env_enabled("CRAWL_DCARD_WAIT_UNTIL_LOAD") else None
+
+
 # ──────────────────────────────────────────────
 # post_id 추출기 (사이트별)
 # ──────────────────────────────────────────────
@@ -33,7 +41,8 @@ from dataclasses import dataclass, field  # noqa: F401
 
 _PTT_POST_ID_RE = re.compile(r"/M\.(\d+)(?:\.[A-Z]\.[0-9A-F]+)?\.html$")
 _PJ_POST_ID_RE = re.compile(r"/thread-(\d+)-(\d+)-(\d+)\.html$")
-_BAHAMUT_POST_ID_RE = re.compile(r"bsn=(\d+)&snA=(\d+)")
+_BAHAMUT_BSN_RE = re.compile(r"[?&]bsn=(\d+)")
+_BAHAMUT_SNA_RE = re.compile(r"[?&]snA=(\d+)")
 _NGA_POST_ID_RE = re.compile(r"tid=(\d+)")
 
 
@@ -52,10 +61,11 @@ def _pojie_post_id(url: str) -> str:
 
 
 def _bahamut_post_id(url: str) -> str:
-    m = _BAHAMUT_POST_ID_RE.search(url)
-    if not m:
+    bsn_m = _BAHAMUT_BSN_RE.search(url)
+    sna_m = _BAHAMUT_SNA_RE.search(url)
+    if not bsn_m or not sna_m:
         raise ValueError(f"Bahamut URL 에서 post_id 추출 실패: {url!r}")
-    return f"bsn{m.group(1)}_snA{m.group(2)}"  # bsn842_snA12345
+    return f"bsn{bsn_m.group(1)}_snA{sna_m.group(1)}"  # bsn842_snA12345
 
 
 def _nga_post_id(url: str) -> str:
@@ -98,7 +108,8 @@ class SiteConfig:
     wait_for: str | None = None                         # CrawlerRunConfig.wait_for (Dcard 등 SPA)
     headers: dict[str, str] | None = None               # CrawlerRunConfig.headers (User-Agent 등)
     page_timeout: int | None = None                     # ms 단위. None → Crawl4AICrawler 기본값
-    proxy: dict | None = None                           # BrowserConfig.proxy_config
+    proxy: dict | None = None                           # CrawlerRunConfig.proxy_config
+    max_retries: int = 0                                # anti-bot block 감지 시 retry round
     # 페이지 로드 후 실행할 JS. PTT over18 인터스티셜 자동 클릭 등.
     # 네비게이션 트리거 JS 는 wait_for 대신 delay_before_return_html 과 함께 쓴다.
     js_code: list[str] | None = None
@@ -109,16 +120,25 @@ class SiteConfig:
     virtual_scroll_config: dict | None = None           # 가상 스크롤 컨테이너 (Twitter/IG식)
     wait_until: str | None = None                       # "networkidle" / "domcontentloaded"
     simulate_user: bool = False                         # 마우스 움직임 흉내 (약한 anti-bot)
+    override_navigator: bool = False                    # navigator fingerprint 완화 (anti-bot)
     user_agent_mode: str | None = None                  # "random" 등 — BrowserConfig 측
     c4a_script: list[str] | None = None                 # crawl4ai DSL 스크립트 (login 폼 등)
     # 기본 False 로 둠 — 일부 사이트(52pojie 등)는 본문이 링크 기반이라
     # 켜면 본문이 텅 비어버리는 사례 실측 확인. 사이트별로 필요시 명시 활성화.
     exclude_social_media_links: bool = False
     exclude_external_links: bool | None = None          # None → crawl4ai 기본 (False)
-    # 게시판 listing → 게시글 URL 추출 시 link.text(=제목) 에 적용할 키워드.
-    # 매칭되는 URL 만 fetch 단계로 통과. 혼합 보드(NC + 비NC) 에서 토큰 절감.
-    # None / 빈 리스트 → 필터 없음 (모든 패턴-매칭 URL 통과).
+    # 게시판 listing → 게시글 URL 추출 시 link.text(=제목) 에 적용할 우선순위 키워드.
+    # hard filter 가 아니라 관련 제목 후보를 먼저 fetch 하기 위한 scoring feature 다.
+    # None / 빈 리스트 → 모든 패턴-매칭 URL 이 같은 우선순위.
     title_keywords: list[str] | None = None
+    # ── pagination ──
+    # max_pages=1 (기본) 이면 board_urls 의 각 URL 을 단일 페이지로 처리.
+    # max_pages > 1 이고 page_url_template 이 설정되면 {base}/{page} 로 추가 페이지 생성.
+    max_pages: int = 1
+    page_url_template: str | None = None               # 예: "{base}&page={page}"
+    # 동적 이전 페이지 탐색: link.text 에 이 문자열이 포함된 링크를 다음 board_url 로 사용.
+    # PTT 上頁 처럼 URL 을 미리 알 수 없는 파일시스템 기반 pagination 에 사용.
+    prev_page_link_text: str | None = None
     enabled: bool = True
     note: str = ""                                      # 접근 제한·특이사항
 
@@ -205,16 +225,25 @@ _NC_GAME_KEYWORDS: list[str] = [
 
 # Bahamut NC 게임 보드 헬퍼 — 모두 같은 selector·image_filter·헤더를 공유.
 def _make_bahamut_nc_site(name_zh: str, bsn: int) -> SiteConfig:
+    # post_url_pattern: page 2+ 링크는 bPage=N 파라미터가 앞에 붙음. lookahead로 처리.
+    # last=1("마지막 댓글로" 링크) 제외 — bsn+snA 로 dedup 불가해서 candidate 에서 배제.
     return SiteConfig(
         name=f"巴哈姆特 ({name_zh})",
         description=f"바하무트 NC 게임 전용 보드 — {name_zh}",
         board_urls=[f"https://forum.gamer.com.tw/B.php?bsn={bsn}"],
-        post_url_pattern=r"https://forum\.gamer\.com\.tw/C\.php\?bsn=\d+&snA=\d+(&|$)",
+        post_url_pattern=(
+            r"https://forum\.gamer\.com\.tw/C\.php\?"
+            r"(?!.*[&]last=\d)"
+            r"(?=.*\bbsn=\d+)"
+            r"(?=.*\bsnA=\d+)"
+        ),
         post_id_extractor=_bahamut_post_id,
         css_selector=".c-article__content, .c-post__body",
         image_filter=_bahamut_image_filter,
         headers=_TW_HEADERS,
         page_timeout=35_000,
+        max_pages=3,
+        page_url_template=f"https://forum.gamer.com.tw/B.php?bsn={bsn}&page={{page}}",
         enabled=True,
         note=f"NC 게임 {name_zh} 전용 보드 (bsn={bsn}) — 100% NC 관련.",
     )
@@ -236,6 +265,8 @@ SITES: dict[str, SiteConfig] = {
         post_url_pattern=r"https://www\.inven\.co\.kr/board/maple/2298/\d+$",
         css_selector=".articleMain",
         image_filter=_inven_image_filter,
+        max_pages=3,
+        page_url_template="{base}?p={page}",
         enabled=True,
         note="NEXON. 비교 데이터로 유지.",
     ),
@@ -249,6 +280,8 @@ SITES: dict[str, SiteConfig] = {
         post_url_pattern=r"https://www\.inven\.co\.kr/board/lineageclassic/6482/\d+$",
         css_selector=".articleMain",
         image_filter=_inven_image_filter,
+        max_pages=3,
+        page_url_template="{base}?p={page}",
         enabled=True,
     ),
 
@@ -269,6 +302,8 @@ SITES: dict[str, SiteConfig] = {
         ],
         delay_before_return_html=3.0,
         headers=_TW_HEADERS,
+        max_pages=3,
+        prev_page_link_text="上頁",
         enabled=True,
         note="100% NC 게임 보드 — title_keywords 불필요.",
     ),
@@ -288,9 +323,11 @@ SITES: dict[str, SiteConfig] = {
         ],
         delay_before_return_html=3.0,
         headers=_TW_HEADERS,
-        title_keywords=_NC_GAME_KEYWORDS,  # 제목에 NC 게임명 있는 글만 fetch
+        title_keywords=_NC_GAME_KEYWORDS,  # 제목 키워드 매칭 후보 우선
+        max_pages=3,
+        prev_page_link_text="上頁",
         enabled=True,
-        note="혼합 보드. NC 게임 제목 매칭만 fetch — 토큰·시간 절감.",
+        note="혼합 보드. NC 게임 제목 매칭 후보를 우선 fetch — 미매칭 후보도 보존.",
     ),
 
     # ── 대만 Dcard — 일반 게임 + 온라인게임 (둘 다 혼합) ─────────────────
@@ -302,30 +339,41 @@ SITES: dict[str, SiteConfig] = {
         ],
         post_url_pattern=r"https://www\.dcard\.tw/f/game/p/\d+",
         image_filter=_dcard_image_filter,
-        wait_for="css:article",
+        # /f/game listing 은 article selector 로 회수되지만, detail page 에 같은 wait_for 를
+        # 재사용하면 실제 smoke 에서 timeout. /f/online 과 동일하게 selector 의존을 끊는다.
+        delay_before_return_html=3.0,
+        wait_until=_dcard_wait_until(),
+        simulate_user=_env_enabled("CRAWL_DCARD_SIMULATE_USER"),
+        override_navigator=_env_enabled("CRAWL_DCARD_OVERRIDE_NAVIGATOR"),
         page_timeout=45_000,
+        max_retries=1,
         headers=_TW_HEADERS,
         title_keywords=_NC_GAME_KEYWORDS,
         enabled=True,
-        note="React SPA. NC 키워드 매칭 게시글만 fetch.",
+        note="React SPA. selector 의존 제거 — title_keywords 는 priority feature.",
     ),
 
     "dcard_online": SiteConfig(
-        name="Dcard (online)",
-        description="Dcard 온라인게임 게시판 — NC 비중 더 높음",
+        name="Dcard (topic: 線上遊戲)",
+        description="Dcard 線上遊戲 topic — 여러 forum 의 온라인게임 글 집계",
         board_urls=[
-            "https://www.dcard.tw/f/online",
+            "https://www.dcard.tw/topics/%E7%B7%9A%E4%B8%8A%E9%81%8A%E6%88%B2",
         ],
-        post_url_pattern=r"https://www\.dcard\.tw/f/online/p/\d+",
+        post_url_pattern=r"https://www\.dcard\.tw/f/[A-Za-z0-9_-]+/p/\d+",
         image_filter=_dcard_image_filter,
         # Dcard React 클래스가 CSS module 해시 (PostList_entry_*) 라 selector 매번 깨짐.
-        # /f/online 은 wait_for="css:article" 가 타임아웃 (회수율 0) — DOM 의존 끊고 hydration 시간만 대기.
+        # /f/online 은 현재 게시글 링크를 내지 않음 — 線上遊戲 topic 으로 이동.
+        # topic/listing 모두 DOM 의존 끊고 hydration 시간만 대기.
         delay_before_return_html=3.0,
+        wait_until=_dcard_wait_until(),
+        simulate_user=_env_enabled("CRAWL_DCARD_SIMULATE_USER"),
+        override_navigator=_env_enabled("CRAWL_DCARD_OVERRIDE_NAVIGATOR"),
         page_timeout=45_000,
+        max_retries=1,
         headers=_TW_HEADERS,
         title_keywords=_NC_GAME_KEYWORDS,
         enabled=True,
-        note="온라인게임 카테고리. NC 키워드 매칭만 fetch. selector 의존 제거 (2026-05-27).",
+        note="線上遊戲 topic. 여러 forum post URL 을 수집. selector 의존 제거.",
     ),
 
     # ── 대만 Bahamut — NC 게임 8개 보드 (모두 순수 NC, title_keywords 불필요) ──

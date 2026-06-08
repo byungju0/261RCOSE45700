@@ -100,6 +100,12 @@ class TestDcardValidator:
         v = cv.validate_dcard(text, "")
         assert v.is_real_user_post is True
 
+    def test_real_post_with_dcard_post_url_and_body_length(self):
+        text = "狼人殺揪團心得，這篇沒有 Dcard 類別 chrome，但正文很完整。" * 12
+        v = cv.validate_dcard(text, "https://www.dcard.tw/f/werewolf/p/261604959")
+        assert v.is_real_user_post is True
+        assert v.kind == "real"
+
     def test_no_markers_unknown(self):
         v = cv.validate_dcard("그냥 일반 텍스트 " * 20, "")
         assert v.kind == "unknown"
@@ -135,12 +141,21 @@ class TestBahamutValidator:
         assert v.kind == "real"
 
     def test_short_post_classified_as_short_not_real(self):
-        # 200자 미만 → real 가 아닌 short.
+        # generic guard 기준 50자 미만 → real 가 아닌 short.
         text = "짧은 글 " * 5  # 30자 정도
         v = cv.validate_bahamut(text, "")
-        # generic guard 에서 short(<50자) 또는 short(<200자) 둘 중 잡힘.
         assert v.is_real_user_post is False
         assert v.kind == "short"
+
+    def test_short_but_meaningful_user_post_passes(self):
+        # 2026-06-07 detail probe: 50~200자 사이 Bahamut 글에도 위험 신호가 있었다.
+        text = (
+            "今天在野外找背包和採集看到的外掛，請問這種情況官方會處理嗎？"
+            "角色一直重複同樣動作，附近玩家也都在討論。"
+        )
+        v = cv.validate_bahamut(text, "")
+        assert v.is_real_user_post is True
+        assert v.kind == "real"
 
 
 # ──────────────────────────────────────────────

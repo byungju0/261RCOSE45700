@@ -12,7 +12,15 @@ class TrackerBaseException(Exception):
 
 
 class CrawlerException(TrackerBaseException):
-    pass
+    def __init__(
+        self,
+        message: str,
+        correlation_id: str | None = None,
+        *,
+        crawl_stats: dict | None = None,
+    ) -> None:
+        super().__init__(message, correlation_id)
+        self.crawl_stats = crawl_stats or {}
 
 
 class DetectionException(TrackerBaseException):
