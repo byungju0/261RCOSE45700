@@ -1,0 +1,172 @@
+[
+  {
+    "name": "핵_치트_월핵",
+    "keywords": ["월핵", "wallhack"],
+    "triage": {
+      "type": "핵_치트", "confidence": 0.96, "game_context": "리니지M",
+      "reason_ko": "월핵(벽 투시) 판매 게시글. 탐지 우회 문구 명시.",
+      "translated_text_ko": null, "needs_image": true, "needs_link_trace": false,
+      "input_tokens": 150, "output_tokens": 48, "cost_usd": 0.00045
+    },
+    "image": {
+      "illegal_indicators": ["월핵 ESP 오버레이", "치트 메뉴", "텔레그램 판매 연락처"],
+      "extracted_text": "WallHack v3.2 | Telegram: @hack_seller | 월 50,000원",
+      "summary_ko": "월핵 실행 화면과 판매자 연락처·가격이 확인됨.",
+      "contributes": true,
+      "input_tokens": 900, "output_tokens": 64, "cost_usd": 0.0058
+    },
+    "synth": {
+      "type": "핵_치트", "confidence": 0.98,
+      "reason_ko": "이미지에서 월핵 ESP 화면과 판매 연락처가 확인되어 핵 판매로 확정.",
+      "translated_text_ko": null, "image_observed": true,
+      "input_tokens": 1500, "output_tokens": 88, "cost_usd": 0.0082
+    }
+  },
+  {
+    "name": "불법프로그램_배포_오토마우스",
+    "keywords": ["오토마우스", "오토 프로그램"],
+    "triage": {
+      "type": "불법프로그램_배포", "confidence": 0.94, "game_context": "아이온",
+      "reason_ko": "오토마우스 자동사냥 프로그램 무료 배포 게시글.",
+      "translated_text_ko": null, "needs_image": true, "needs_link_trace": false,
+      "input_tokens": 145, "output_tokens": 50, "cost_usd": 0.00044
+    },
+    "image": {
+      "illegal_indicators": ["오토 프로그램 실행 화면", "매크로 좌표 설정 UI"],
+      "extracted_text": "AutoHunt Pro | 무료 배포 | 디스코드 참고",
+      "summary_ko": "자동사냥 프로그램 실행 화면이 확인됨.",
+      "contributes": true,
+      "input_tokens": 880, "output_tokens": 58, "cost_usd": 0.0056
+    },
+    "synth": {
+      "type": "불법프로그램_배포", "confidence": 0.97,
+      "reason_ko": "이미지에서 오토 프로그램 실행 화면이 확인되어 불법프로그램 배포로 확정.",
+      "translated_text_ko": null, "image_observed": true,
+      "input_tokens": 1480, "output_tokens": 84, "cost_usd": 0.0080
+    }
+  },
+  {
+    "name": "매크로_판매_자동사냥",
+    "keywords": ["자동사냥 매크로", "매크로 판매"],
+    "triage": {
+      "type": "매크로_판매", "confidence": 0.92, "game_context": "블레이드앤소울",
+      "reason_ko": "자동사냥 매크로 영구 라이선스 판매. 카카오톡 연락처 명시.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 138, "output_tokens": 46, "cost_usd": 0.00042
+    },
+    "synth": {
+      "type": "매크로_판매", "confidence": 0.95,
+      "reason_ko": "자동사냥 매크로 판매와 연락처가 본문에 명시되어 매크로 판매로 확정.",
+      "translated_text_ko": null, "image_observed": false,
+      "input_tokens": 1300, "output_tokens": 72, "cost_usd": 0.0072
+    }
+  },
+  {
+    "name": "사설서버_프리서버",
+    "keywords": ["프리서버", "사설섭"],
+    "triage": {
+      "type": "사설서버", "confidence": 0.91, "game_context": "리니지",
+      "reason_ko": "사설(프리)서버 오픈 홍보. 접속 방법·서버 스펙 안내.",
+      "translated_text_ko": null, "needs_image": true, "needs_link_trace": false,
+      "input_tokens": 142, "output_tokens": 52, "cost_usd": 0.00044
+    },
+    "image": {
+      "illegal_indicators": ["사설서버 접속 화면", "서버 홍보 배너"],
+      "extracted_text": "리니지 프리서버 OPEN | 1000% 경험치",
+      "summary_ko": "사설서버 홍보 배너와 접속 화면이 확인됨.",
+      "contributes": true,
+      "input_tokens": 870, "output_tokens": 56, "cost_usd": 0.0055
+    },
+    "synth": {
+      "type": "사설서버", "confidence": 0.93,
+      "reason_ko": "이미지에서 사설서버 홍보 배너가 확인되어 사설서버로 확정.",
+      "translated_text_ko": null, "image_observed": true,
+      "input_tokens": 1450, "output_tokens": 80, "cost_usd": 0.0079
+    }
+  },
+  {
+    "name": "계정_거래",
+    "keywords": ["계정 삽니다", "계정 판매"],
+    "triage": {
+      "type": "계정_거래", "confidence": 0.90, "game_context": "쓰론앤리버티",
+      "reason_ko": "고레벨 계정 현금 거래 게시글. 시세·연락처 안내.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 130, "output_tokens": 44, "cost_usd": 0.00041
+    },
+    "synth": {
+      "type": "계정_거래", "confidence": 0.92,
+      "reason_ko": "계정 현금 거래 의사와 시세가 명시되어 계정 거래로 확정.",
+      "translated_text_ko": null, "image_observed": false,
+      "input_tokens": 1280, "output_tokens": 70, "cost_usd": 0.0071
+    }
+  },
+  {
+    "name": "현금화_아데나",
+    "keywords": ["아데나 현금", "골드 현금화"],
+    "triage": {
+      "type": "현금화", "confidence": 0.88, "game_context": "리니지M",
+      "reason_ko": "게임 재화(아데나) 현금화 매입·매도 게시글.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 128, "output_tokens": 42, "cost_usd": 0.00040
+    },
+    "synth": {
+      "type": "현금화", "confidence": 0.90,
+      "reason_ko": "게임 재화 현금화 매매 의사가 명시되어 현금화로 확정.",
+      "translated_text_ko": null, "image_observed": false,
+      "input_tokens": 1260, "output_tokens": 68, "cost_usd": 0.0070
+    }
+  },
+  {
+    "name": "광고_도배",
+    "keywords": ["홍보 도배", "광고 도배"],
+    "triage": {
+      "type": "광고_도배", "confidence": 0.85, "game_context": "불명",
+      "reason_ko": "동일 외부 홍보 문구를 반복 도배한 스팸 게시글.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 125, "output_tokens": 40, "cost_usd": 0.00040
+    },
+    "synth": {
+      "type": "광고_도배", "confidence": 0.87,
+      "reason_ko": "반복적 외부 홍보 도배 패턴이 확인되어 광고 도배로 확정.",
+      "translated_text_ko": null, "image_observed": false,
+      "input_tokens": 1240, "output_tokens": 66, "cost_usd": 0.0069
+    }
+  },
+  {
+    "name": "리세마라_계정",
+    "keywords": ["리세마라", "리세 계정"],
+    "triage": {
+      "type": "리세마라", "confidence": 0.86, "game_context": "아이온2",
+      "reason_ko": "리세마라(초기화 반복) 완성 계정 양도 게시글.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 126, "output_tokens": 41, "cost_usd": 0.00040
+    },
+    "synth": {
+      "type": "리세마라", "confidence": 0.88,
+      "reason_ko": "리세마라 완성 계정 양도 의사가 명시되어 리세마라로 확정.",
+      "translated_text_ko": null, "image_observed": false,
+      "input_tokens": 1250, "output_tokens": 67, "cost_usd": 0.0070
+    }
+  },
+  {
+    "name": "정상_공략",
+    "keywords": ["공략", "보스 공략"],
+    "triage": {
+      "type": "기타", "confidence": 0.94, "game_context": "리니지W",
+      "reason_ko": "정상적인 보스 공략 정보 공유 게시글. 판매·불법 행위 없음.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 118, "output_tokens": 34, "cost_usd": 0.00039
+    }
+  },
+  {
+    "name": "정상_패치노트",
+    "keywords": ["패치노트", "업데이트 소식"],
+    "default": true,
+    "triage": {
+      "type": "기타", "confidence": 0.95, "game_context": "리니지",
+      "reason_ko": "공식 패치노트 요약 공유 게시글. 불법 정황 없음.",
+      "translated_text_ko": null, "needs_image": false, "needs_link_trace": false,
+      "input_tokens": 115, "output_tokens": 32, "cost_usd": 0.00038
+    }
+  }
+]
