@@ -183,9 +183,12 @@ class LinkTracer:
         converter.ignore_images = True
         body = converter.handle(html)[:4000]
         is_dist, indicators = _detect_indicators(title or "", body)
+        # excerpt: S3 Synthesizer가 소비할 본문 발췌 (Story 3-8) — 공백 정돈 후 500자 캡.
+        excerpt = re.sub(r"\s+", " ", body).strip()[:500]
         return LinkEvidence(
             url=url, kind="web", fetch_status="ok",
             page_title=title, is_distribution_site=is_dist, indicators=indicators,
+            excerpt=excerpt,
         )
 
     def _cache_get(self, url: str) -> LinkEvidence | None:
@@ -209,7 +212,7 @@ class LinkTracer:
         payload = json.dumps({
             "url": ev.url, "kind": ev.kind, "fetch_status": ev.fetch_status,
             "page_title": ev.page_title, "is_distribution_site": ev.is_distribution_site,
-            "indicators": ev.indicators,
+            "indicators": ev.indicators, "excerpt": ev.excerpt,
         })
         try:
             self._redis.set(_cache_key(url), payload, ex=_CACHE_TTL_SEC)

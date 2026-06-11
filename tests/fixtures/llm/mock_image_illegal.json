@@ -1,0 +1,9 @@
+{
+  "illegal_indicators": ["매크로 프로그램 실행 화면", "카카오톡 판매 연락처 노출", "가격표"],
+  "extracted_text": "AutoLevel Macro v2.1 | KakaoTalk: macro_seller_2024 | 50,000원/월",
+  "summary_ko": "매크로 프로그램 실행 화면과 판매자 연락처·가격이 확인됨.",
+  "contributes": true,
+  "input_tokens": 900,
+  "output_tokens": 60,
+  "cost_usd": 0.0058
+}

@@ -135,6 +135,21 @@ def _resolve_image_url(image: str) -> str | None:
     return f"data:image/{suffix};base64,{encoded}"
 
 
+def build_image_blocks(images: list[str]) -> list[dict[str, Any]]:
+    """이미지 URL/경로 목록 → OpenAI image_url content block 목록 (Story 3-8 공개 헬퍼).
+
+    `classify()`와 S2a ImageAnalyst가 공유한다. resolve 실패(s3:// 미변환·파일 없음 등)는
+    경고 후 스킵 — 호출자가 빈 목록 여부로 진행/스킵을 판단한다.
+    """
+    blocks: list[dict[str, Any]] = []
+    for img in images:
+        url = _resolve_image_url(img)
+        if url is None:
+            continue
+        blocks.append({"type": "image_url", "image_url": {"url": url}})
+    return blocks
+
+
 class LLMClient:
     """OpenAI 멀티모달 LLM wrapper. LLMInterface Protocol 구현."""
 
@@ -172,12 +187,7 @@ class LLMClient:
             return self._call(text, images_payload=[], source_id=source_id)
 
         # 이미지 URL/경로 → OpenAI content block으로 변환.
-        image_blocks: list[dict[str, Any]] = []
-        for img in images:
-            url = _resolve_image_url(img)
-            if url is None:
-                continue
-            image_blocks.append({"type": "image_url", "image_url": {"url": url}})
+        image_blocks = build_image_blocks(images)
 
         if not image_blocks:
             # 모든 이미지가 스킵 — 텍스트 only fallback
@@ -285,15 +295,21 @@ class LLMClient:
         schema: dict[str, Any],
         schema_name: str,
         model: str,
+        image_blocks: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], int, int, float]:
-        """에이전트용 범용 structured 호출 (텍스트 only). (parsed, in_tok, out_tok, cost) 반환.
+        """에이전트용 범용 structured 호출. (parsed, in_tok, out_tok, cost) 반환.
 
         S1 트리아지 등 자체 스키마·모델을 쓰는 에이전트가 OpenAI 플러밍(호출·429 재시도·토큰/비용
         집계)을 재사용하기 위한 진입점 — 신규 OpenAI wrapper 작성 없이 본 클라이언트를 공유한다.
+        Story 3-8: `image_blocks`(`build_image_blocks` 산출물)를 넘기면 멀티모달 호출 —
+        S2a ImageAnalyst 전용. 미전달 시 기존 str content 그대로(3-7 wire format 보존).
         """
+        user_content: str | list[dict[str, Any]] = f"게시글:\n{user_text}"
+        if image_blocks:
+            user_content = [{"type": "text", "text": user_content}, *image_blocks]
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"게시글:\n{user_text}"},
+            {"role": "user", "content": user_content},
         ]
         resp = self._create_with_retry(
             messages, schema=schema, schema_name=schema_name, model=model

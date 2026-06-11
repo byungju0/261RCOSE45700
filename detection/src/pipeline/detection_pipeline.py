@@ -69,7 +69,14 @@ class DetectionPipeline:
 
         tier = self._tier_router.route(response.type)
 
-        self._cost_cap.record(response.input_tokens, response.output_tokens, model_name)
+        # 비용 기록: agentic은 스테이지(모델)별 — mini+4o 혼합에서 단일 모델 단가 적용 오류 방지
+        # (Story 3-8). single은 기존 단일 record 유지.
+        if use_agentic and traces:
+            for trace in traces:
+                if trace.model and (trace.input_tokens or trace.output_tokens):
+                    self._cost_cap.record(trace.input_tokens, trace.output_tokens, trace.model)
+        else:
+            self._cost_cap.record(response.input_tokens, response.output_tokens, model_name)
 
         if self._repository is not None:
             self._repository.save(
@@ -112,8 +119,12 @@ class DetectionPipeline:
         self, message: str, event: CrawlEvent
     ) -> tuple[LLMResponse, list[AgentRunTrace], str, str]:
         assert self._orchestrator is not None
+        # 이미지 소스: single 모드(_run_single)와 동일 의미론 (s3 paths 우선 — presigned 한계 포함).
+        images: list[str] = list(event.s3_image_paths or event.image_urls or [])
         verdict, traces = self._retry_handler.execute_with_retry(
-            lambda: self._orchestrator.run(event.raw_text, correlation_id=event.correlation_id),
+            lambda: self._orchestrator.run(
+                event.raw_text, correlation_id=event.correlation_id, images=images,
+            ),
             message=message,
             post_id=event.post_id,
             correlation_id=event.correlation_id,

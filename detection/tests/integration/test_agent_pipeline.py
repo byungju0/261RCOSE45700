@@ -1,7 +1,9 @@
-"""Agentic 파이프라인 통합 + 출력 계약 불변 (Story 3-7).
+"""Agentic 파이프라인 통합 + 출력 계약 불변 (Story 3-7 / 3-8).
 
 DETECTION_MODE=agentic E2E를 LLMMock + LinkTracer(MockTransport) + fakeredis + MagicMock repo로
-검증한다. 외부 OpenAI·실제 Redis·실제 PG 0건. AC #12(agentic E2E + single 회귀) / #13(출력 계약 불변).
+검증한다. 외부 OpenAI·실제 Redis·실제 PG 0건.
+3-7: agentic E2E + single 회귀 + 출력 계약 불변. 3-8: escalate 전 경로(S2a∥S2b→S3) +
+예산 degrade + S3 실패 fallback (AC #8).
 """
 
 from __future__ import annotations
@@ -14,8 +16,10 @@ import httpx
 import pytest
 
 import detection.src.agents.link_fetch_guard as guard_mod
+from detection.src.agents.image_analyst import ImageAnalyst
 from detection.src.agents.link_tracer import LinkTracer
 from detection.src.agents.orchestrator import AgentOrchestrator
+from detection.src.agents.synthesizer import Synthesizer
 from detection.src.agents.triage_agent import TriageAgent
 from detection.src.mocks.llm_mock import LLMMock
 from detection.src.pipeline.detection_pipeline import DetectionPipeline
@@ -32,6 +36,7 @@ from shared.models.crawl_event import CrawlEvent
 def _env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_DAILY_COST_CAP_USD", "0")
     monkeypatch.setenv("RETRY_BACKOFF_BASE_SEC", "0")
+    monkeypatch.setenv("AGENT_POST_BUDGET_USD", "0")  # 예산 테스트에서 개별 설정
     monkeypatch.setattr(guard_mod, "_resolve_all_ips", lambda host: ["93.184.216.34"])
 
 
@@ -45,11 +50,11 @@ def rl_redis() -> fakeredis.FakeRedis:
     return fakeredis.FakeRedis(decode_responses=True)
 
 
-def _event(raw_text: str, post_id: str = "p_001") -> CrawlEvent:
+def _event(raw_text: str, post_id: str = "p_001", image_urls: list[str] | None = None) -> CrawlEvent:
     return CrawlEvent(
         post_id=post_id, source_id="bahamut_lineage", site_name="Bahamut",
         raw_text=raw_text, language="zh-TW", detected_at="2026-06-11T00:00:00Z",
-        correlation_id=f"cid-{post_id}",
+        correlation_id=f"cid-{post_id}", image_urls=image_urls or [],
     )
 
 
@@ -68,14 +73,20 @@ def _classifier(mode, rl_redis) -> LLMClassifier:
     return LLMClassifier(LLMMock(mode=mode), bucket, model_version=_MODEL_VERSION)
 
 
-def _agentic_pipeline(triage_mode, mq_redis, rl_redis, repo, link_handler=None):
-    triage = TriageAgent(LLMMock(mode=triage_mode), model="gpt-4o-mini")
+def _agentic_pipeline(triage_mode, mq_redis, rl_redis, repo, link_handler=None, synth_llm=None):
+    """3-8 full wiring (S0~S3). synth_llm으로 S3 실패 모드 주입 가능."""
+    mock_llm = LLMMock(mode=triage_mode)
+    triage = TriageAgent(mock_llm, model="gpt-4o-mini")
     handler = link_handler if link_handler is not None else _default_link_handler
     tracer = LinkTracer(
         fakeredis.FakeRedis(decode_responses=True),
         transport=httpx.MockTransport(handler),
     )
-    orchestrator = AgentOrchestrator(triage, tracer)
+    image_analyst = ImageAnalyst(mock_llm, model="gpt-4o")
+    synthesizer = Synthesizer(synth_llm or mock_llm, model="gpt-4o")
+    orchestrator = AgentOrchestrator(
+        triage, tracer, image_analyst=image_analyst, synthesizer=synthesizer,
+    )
     return DetectionPipeline(
         classifier=_classifier(triage_mode, rl_redis),
         tier_router=TierRouter(),
@@ -115,7 +126,8 @@ def test_agentic_fast_path_saves_detection_without_link_trace(mq_redis, rl_redis
     assert stages == ["normalize", "triage"]
 
 
-def test_agentic_escalate_saves_link_trace(mq_redis, rl_redis) -> None:
+def test_agentic_escalate_saves_link_trace_and_synthesizes(mq_redis, rl_redis) -> None:
+    # 3-8: escalate 경로가 degrade가 아니라 S3 합성으로 종결된다.
     repo = MagicMock()
     repo.save.return_value = 2
     pipeline = _agentic_pipeline("illegal", mq_redis, rl_redis, repo)
@@ -123,10 +135,75 @@ def test_agentic_escalate_saves_link_trace(mq_redis, rl_redis) -> None:
     pipeline.process(_event("매크로 팝니다 https://evil.example/m").to_json())
 
     kwargs = repo.save.call_args.kwargs
-    assert kwargs["response"].type == "매크로_판매"
+    assert kwargs["response"].type == "매크로_판매"  # synth fixture verdict
     assert kwargs["tier"] == "T1"  # 매크로_판매 → T1
+    assert kwargs["model_version"].startswith("agentic:v1:mini+4o:")
     stages = [t.stage for t in kwargs["agent_runs"]]
-    assert stages == ["normalize", "triage", "link_trace"]
+    assert stages == ["normalize", "triage", "link_trace", "synthesize"]
+
+
+def test_agentic_escalate_full_path_with_images(mq_redis, rl_redis, monkeypatch) -> None:
+    # AC #1~#3 E2E: 이미지 포함 escalate → S2a∥S2b → S3, agent_runs 5 stage.
+    monkeypatch.setenv("LLM_SEND_IMAGES", "true")
+    repo = MagicMock()
+    repo.save.return_value = 4
+    pipeline = _agentic_pipeline("illegal", mq_redis, rl_redis, repo)
+
+    pipeline.process(
+        _event(
+            "매크로 팝니다 https://evil.example/m",
+            post_id="p_img",
+            image_urls=["https://example.com/macro_shot.jpg"],
+        ).to_json()
+    )
+
+    kwargs = repo.save.call_args.kwargs
+    stages = [t.stage for t in kwargs["agent_runs"]]
+    assert stages == ["normalize", "triage", "image", "link_trace", "synthesize"]
+    response = kwargs["response"]
+    assert response.type == "매크로_판매"
+    assert response.image_observed is True  # S2a contributes=true (fixture)
+    # 비용 합산: triage 0.00118 + image 0.0058 + synth 0.008 (link_trace $0).
+    assert response.cost_usd == pytest.approx(0.00118 + 0.0058 + 0.008)
+    image_trace = next(t for t in kwargs["agent_runs"] if t.stage == "image")
+    assert image_trace.model == "gpt-4o"
+    assert image_trace.output["contributes"] is True
+
+
+def test_agentic_budget_degrade_still_saves(mq_redis, rl_redis, monkeypatch) -> None:
+    # AC #5 E2E: 예산 초과 → degrade 종결이어도 전수 저장 정책 유지.
+    monkeypatch.setenv("AGENT_POST_BUDGET_USD", "0.000001")
+    repo = MagicMock()
+    repo.save.return_value = 5
+    pipeline = _agentic_pipeline("illegal", mq_redis, rl_redis, repo)
+
+    pipeline.process(_event("매크로 팝니다 https://evil.example/m", post_id="p_budget").to_json())
+
+    repo.save.assert_called_once()  # 저장은 항상 수행
+    kwargs = repo.save.call_args.kwargs
+    assert kwargs["response"].type == "매크로_판매"  # 트리아지 degrade
+    synth_trace = next(t for t in kwargs["agent_runs"] if t.stage == "synthesize")
+    assert synth_trace.output["skipped"] == "budget_exceeded"
+    stages = [t.stage for t in kwargs["agent_runs"]]
+    assert "link_trace" not in stages  # 잔여 stage 스킵
+
+
+def test_agentic_s3_failure_falls_back_to_triage(mq_redis, rl_redis) -> None:
+    # AC #6 E2E: S3 실패 → 트리아지 결과로 degrade 저장 + 실패 trace.
+    repo = MagicMock()
+    repo.save.return_value = 6
+    pipeline = _agentic_pipeline(
+        "illegal", mq_redis, rl_redis, repo, synth_llm=LLMMock(mode="timeout"),
+    )
+
+    pipeline.process(_event("매크로 팝니다 https://evil.example/m", post_id="p_s3f").to_json())
+
+    repo.save.assert_called_once()
+    kwargs = repo.save.call_args.kwargs
+    assert kwargs["response"].type == "매크로_판매"  # 트리아지 degrade (fixture와 동일 type)
+    assert kwargs["response"].confidence == 0.95     # 트리아지 confidence (synth 0.97 아님)
+    synth_trace = next(t for t in kwargs["agent_runs"] if t.stage == "synthesize")
+    assert "TimeoutError" in synth_trace.output["error"]
 
 
 def test_single_mode_unaffected_no_agent_runs(mq_redis, rl_redis) -> None:

@@ -1,4 +1,4 @@
-"""Stage 간 데이터 계약 — 멀티 에이전트 파이프라인 (Story 3-7).
+"""Stage 간 데이터 계약 — 멀티 에이전트 파이프라인 (Story 3-7 / 3-8).
 
 오케스트레이터(`orchestrator.py`)가 각 에이전트 출력을 다음 단계로 넘길 때 쓰는 dataclass.
 `AgentRunTrace`는 RDS `agent_runs` 1행(Flyway V10)에 1:1 대응한다.
@@ -16,6 +16,28 @@ from dataclasses import dataclass, field
 AGENT_STAGES: frozenset[str] = frozenset({
     "normalize", "triage", "image", "link_trace", "synthesize",
 })
+
+
+class AgentResponseError(ValueError):
+    """LLM 호출은 성공(과금 발생)했으나 응답 검증에 실패한 경우.
+
+    실지출 usage를 보존해 orchestrator가 실패 trace에 토큰/비용을 기록할 수 있게 한다 —
+    검증 실패로 비용이 예산 가드·cost_cap·detections.cost_usd에서 증발하는 것을 방지.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+    ) -> None:
+        super().__init__(message)
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.cost_usd = cost_usd
+
 
 # LinkEvidence.kind — 링크 1건의 처리 결과 분류.
 LINK_KINDS: frozenset[str] = frozenset({
@@ -58,6 +80,23 @@ class TriageResult:
 
 
 @dataclass
+class ImageEvidence:
+    """S2a image_analyst(gpt-4o) 출력 — 첨부 이미지 판독 증거 (Story 3-8, FR16-NEW-1).
+
+    `contributes`는 "이미지가 불법성 판단에 기여하는가" — 최종 verdict의 `image_observed`로
+    결정론적으로 승격된다(LLM 자가보고 대신, AC #3). 토큰/비용 필드는 TriageResult 패턴 동일.
+    """
+
+    illegal_indicators: list[str] = field(default_factory=list)
+    extracted_text: str = ""
+    summary_ko: str = ""
+    contributes: bool = False
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+@dataclass
 class LinkEvidence:
     """S2b link_tracer 출력 — 링크 1건의 추적 증거."""
 
@@ -67,6 +106,8 @@ class LinkEvidence:
     page_title: str | None = None
     is_distribution_site: bool = False
     indicators: list[str] = field(default_factory=list)
+    # 본문 발췌(최대 500자) — S3 Synthesizer 증거 소스 (Story 3-8 additive, 3-7 캐시분은 기본 "").
+    excerpt: str = ""
 
     def __post_init__(self) -> None:
         if self.kind not in LINK_KINDS:

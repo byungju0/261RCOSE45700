@@ -13,6 +13,7 @@ from detection.src.pipeline.llm_client import (
     CLASSIFICATION_SCHEMA,
     LLMClient,
     SYSTEM_PROMPT,
+    build_image_blocks,
     build_system_prompt,
 )
 from shared.interfaces.llm import RateLimitError
@@ -141,6 +142,53 @@ def test_send_images_false_falls_back_to_text_only() -> None:
     content = mock_openai.chat.completions.create.call_args.kwargs["messages"][1]["content"]
     # 이미지 토글 off → image_url 블록이 추가되지 않아야 함.
     assert not any(b.get("type") == "image_url" for b in content)
+
+
+def test_build_image_blocks_resolves_urls_and_skips_s3() -> None:
+    # Story 3-8: classify()와 S2a ImageAnalyst가 공유하는 이미지 블록 빌더.
+    blocks = build_image_blocks([
+        "https://example.com/a.jpg",
+        "s3://bucket/key.png",   # presigned 변환 전 — 스킵
+        "data:image/png;base64,AAAA",
+    ])
+    assert len(blocks) == 2
+    assert blocks[0] == {"type": "image_url", "image_url": {"url": "https://example.com/a.jpg"}}
+    assert blocks[1]["image_url"]["url"].startswith("data:image/png")
+
+
+def test_run_structured_appends_image_blocks() -> None:
+    # Story 3-8: S2a가 멀티모달 structured 호출에 image_blocks를 전달.
+    mock_openai = MagicMock()
+    mock_openai.chat.completions.create.return_value = _make_openai_response(
+        {"contributes": True}
+    )
+    client = LLMClient(client=mock_openai)
+    blocks = [{"type": "image_url", "image_url": {"url": "https://example.com/a.jpg"}}]
+    parsed, in_tok, out_tok, cost = client.run_structured(
+        system_prompt="sp", user_text="본문", schema={"type": "object"},
+        schema_name="tracker_image_analysis", model="gpt-4o", image_blocks=blocks,
+    )
+
+    assert parsed == {"contributes": True}
+    content = mock_openai.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert content[1] == blocks[0]
+    assert cost > 0
+
+
+def test_run_structured_without_blocks_keeps_str_content() -> None:
+    # 기존 호출자(S1 트리아지) 하위호환 — image_blocks 미전달 시 3-7 wire format(str content) 보존.
+    mock_openai = MagicMock()
+    mock_openai.chat.completions.create.return_value = _make_openai_response({"ok": 1})
+    client = LLMClient(client=mock_openai)
+    client.run_structured(
+        system_prompt="sp", user_text="본문", schema={"type": "object"},
+        schema_name="tracker_triage", model="gpt-4o-mini",
+    )
+    content = mock_openai.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert isinstance(content, str)
+    assert content == "게시글:\n본문"
 
 
 def test_rate_limit_retries_after_sleep_then_raises(monkeypatch: pytest.MonkeyPatch) -> None:

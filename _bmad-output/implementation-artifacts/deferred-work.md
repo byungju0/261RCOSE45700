@@ -253,3 +253,11 @@ Story 3-5를 "정확도 사전 측정"에서 **"few-shot 학습용 라벨 데이
 
 - **LinkTracer 규칙 판정 불가 시 gpt-4o-mini 요약 fallback 미구현** — Task 7 명세는 "page_title+발췌 텍스트가 규칙으로 판정 불가할 때만 mini 요약 호출"을 절충안으로 포함했으나, 현 규칙 엔진(`_detect_indicators`)은 항상 boolean 판정을 산출해 "판정 불가" 트리거 조건 자체가 정의되지 않음. 3-8 Synthesizer가 link_trace 증거를 소비하는 설계와 함께 결정(증거 품질이 부족하면 그때 mini 요약 추가). [연결: 3-7 link_tracer.py `_detect_indicators`]
 - **DNS rebinding TOCTOU 잔여 리스크 (IP 핀 미적용)** — `validate_url()`이 해석한 IP와 httpx가 fetch 시 재해석하는 IP가 다를 수 있음(rebinding 윈도우). 코드 docstring에 2차 방어(fetch 직전 재검증)로 문서화된 설계 결정. 보완 옵션: (a) 해석 IP로 직접 접속하는 IP-핀 custom transport + Host 헤더 유지, (b) 운영 `LINK_TRACE_PROXY` egress 프록시에서 사설망 차단 정책. 운영 배포 전 (b) 권장. [연결: 3-7 link_fetch_guard.py `validate_url`]
+
+## Deferred from: code review of story 3-8 (2026-06-11)
+
+3-layer 적대적 코드 리뷰(Blind Hunter / Edge Case Hunter / Acceptance Auditor)에서 defer 분류된 항목.
+
+- **agentic 경로 TokenBucket/rate-limit 미적용** — S1/S2a/S3 모두 TokenBucket acquire 없음(버킷은 single 모드 LLMClassifier 전용). 429 보호는 llm_client 자체 1회 재시도뿐. 3-7부터의 기존 동작이며 3-8 Dev Record "[명세 해석]"에 문서화 — 코드 검증 결과 사실로 확인. agentic 경로 rate-limit 통합은 별도 follow-up(현재 비용 통제는 cost_cap 일일 캡 + AGENT_POST_BUDGET_USD 게시글당 가드가 담당). [연결: 3-8 Task 3 명세 해석]
+- **RetryHandler 재시도 시 실패 attempt의 LLM 실지출이 cost_cap 미기록** — `execute_with_retry`가 `orchestrator.run` 전체를 재시도 단위로 래핑(3-7 기존 구조)해, 실패한 attempt에서 이미 과금된 트리아지/S2a 호출의 traces가 통째로 폐기되어 일일 캡 집계에서 누수. 기존 "재시도 시 stage 결과 재사용 캐시" defer 항목과 동일 뿌리 — 캐시 도입 시 함께 해소. [연결: detection_pipeline.py `_run_agentic`]
+- **예산 degrade 마커의 stage="synthesize" 의미론** — `_append_budget_skip_trace`가 LLM 미호출 마커를 synthesize stage 행으로 기록(V10 enum 내 유효, 3-9 빈도 집계용 의도). 3-9에서 "synthesize stage 행 수 = S3 호출 수"로 집계하면 오류 — `output.skipped="budget_exceeded"` 행을 구분할 것. [연결: 3-9 비용 실측, orchestrator.py `_append_budget_skip_trace`]

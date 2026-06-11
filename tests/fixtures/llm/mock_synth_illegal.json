@@ -1,0 +1,10 @@
+{
+  "type": "매크로_판매",
+  "confidence": 0.97,
+  "reason_ko": "링크 추적 결과 배포 페이지가 확인되고 이미지에서 판매 연락처가 식별되어 매크로 판매로 확정.",
+  "translated_text_ko": "자동 사냥 매크로 판매합니다. 전 서버 사용 가능, 영구 라이선스. KakaoTalk: macro_seller_2024",
+  "image_observed": true,
+  "input_tokens": 1500,
+  "output_tokens": 90,
+  "cost_usd": 0.008
+}

@@ -115,6 +115,20 @@ def test_cache_hit_skips_second_fetch(redis_client, allow_public_dns) -> None:
     assert second[0].kind == first[0].kind
 
 
+def test_web_evidence_includes_excerpt_and_cache_roundtrip(redis_client, allow_public_dns) -> None:
+    # Story 3-8: S3 Synthesizer가 소비할 본문 발췌(excerpt) — 캐시 왕복에도 보존.
+    html = b"<html><title>Sale</title><body>special hack download body text</body></html>"
+    tracer = _tracer(redis_client, _html_handler(html))
+
+    [first] = tracer.trace(["https://good.example/sale"])
+    assert "special hack download body text" in first.excerpt
+    assert len(first.excerpt) <= 500
+
+    [cached] = tracer.trace(["https://good.example/sale"])
+    assert cached.fetch_status == "cached"
+    assert "special hack download body text" in cached.excerpt
+
+
 def test_http_error_isolated_as_error(redis_client, allow_public_dns) -> None:
     tracer = _tracer(redis_client, _html_handler(b"nope", status=404))
     [ev] = tracer.trace(["https://good.example/missing"])

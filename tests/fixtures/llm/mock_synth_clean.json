@@ -1,0 +1,10 @@
+{
+  "type": "기타",
+  "confidence": 0.93,
+  "reason_ko": "링크와 본문 모두에서 불법 정황이 확인되지 않아 정상 게시글로 판정.",
+  "translated_text_ko": null,
+  "image_observed": false,
+  "input_tokens": 1300,
+  "output_tokens": 70,
+  "cost_usd": 0.0071
+}

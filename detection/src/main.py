@@ -41,15 +41,22 @@ def main() -> None:
     retry_handler = RetryHandler(mq_client)
     repository = DetectionRepository(db_pool)
 
-    # agentic 모드: S1 트리아지 + S2b 링크 추적 오케스트레이터 구성 (Story 3-7).
+    # agentic 모드: S0~S3 전체 오케스트레이터 구성 (Story 3-7 골격 + 3-8 S2a/S3 합류).
     # 링크 캐시는 Redis dedup DB(DB1)를 사용 — rate-limit DB와 분리.
     orchestrator = None
     if detection_mode == "agentic":
+        from detection.src.agents.image_analyst import ImageAnalyst
+        from detection.src.agents.synthesizer import Synthesizer
         from detection.src.config.redis_config import get_dedup_client
         dedup_client = get_dedup_client()
         triage_agent = TriageAgent(llm_client)
         link_tracer = LinkTracer(dedup_client)
-        orchestrator = AgentOrchestrator(triage_agent, link_tracer)
+        image_analyst = ImageAnalyst(llm_client)
+        synthesizer = Synthesizer(llm_client)
+        orchestrator = AgentOrchestrator(
+            triage_agent, link_tracer,
+            image_analyst=image_analyst, synthesizer=synthesizer,
+        )
 
     pipeline = DetectionPipeline(
         classifier, tier_router, cost_cap, retry_handler,
