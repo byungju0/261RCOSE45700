@@ -43,11 +43,9 @@ RUN chmod +x /usr/local/bin/secret-shim \
 
 USER appuser
 
-# Healthcheck: scheduler process must be running.
-# 정규식 bracket 트릭([c]rawler...) — pgrep가 자기 자신의 argv를 매칭해서
-# false-healthy 상태를 만들지 않도록 한다.
+# Healthcheck: trigger listener must keep a fresh Redis heartbeat.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD pgrep -f "[c]rawler.src.scheduler" >/dev/null || exit 1
+    CMD python -m crawler.src.scheduler.healthcheck
 
 ENV PYTHONPATH=/app
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/secret-shim"]

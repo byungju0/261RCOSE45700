@@ -17,7 +17,10 @@ from pathlib import Path
 
 from crawler.src.crawl4ai_crawler import CrawlResult
 from crawler.src.s3_uploader import S3Uploader
+from shared.structured_logger import get_logger
 
+_SERVICE_NAME = os.environ.get("SERVICE_NAME", "crawler")
+_logger = get_logger(__name__)
 _TRUTHY_ENV_VALUES = frozenset({"true", "1", "yes"})
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # crawl4ai_crawler._download_images writes files as `img_{i:03d}{ext}` where i is
@@ -87,6 +90,12 @@ class PostStorage:
         # downloaded_images를 source-of-truth로 사용. 파일명 인덱스로 result.images 매핑.
         image_records: list[dict] = []
         for src_path in result.downloaded_images:
+            if not src_path.exists():
+                _logger.warning(
+                    "다운로드 이미지 파일 없음 — 스킵: %s", src_path,
+                    extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
+                )
+                continue
             dest = post_dir / src_path.name
             dest.write_bytes(src_path.read_bytes())
             src_path.unlink(missing_ok=True)

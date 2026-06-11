@@ -275,6 +275,29 @@ class TestPostStorageS3:
         assert isinstance(result, StorageResult)
         assert result.local_path.exists()
 
+    def test_post_storage_skips_missing_downloaded_image(self, tmp_path):
+        missing = tmp_path / "img_000.png"
+        crawl_result = CrawlResult(
+            url="https://example.com",
+            raw_markdown="raw",
+            fit_markdown="fit content",
+            images=[{"src": "https://example.com/img.png", "alt": "missing"}],
+            downloaded_images=[missing],
+        )
+
+        with patch.dict(os.environ, {"ENABLE_S3_UPLOAD": "false"}):
+            storage = PostStorage(base_dir=str(tmp_path / "out"))
+            result = storage.save(
+                site_id="site",
+                post_id="p1",
+                url="https://example.com",
+                result=crawl_result,
+            )
+
+        post_json = result.local_path / "post.json"
+        assert post_json.exists()
+        assert json.loads(post_json.read_text(encoding="utf-8"))["images"] == []
+
 
 # ---------------------------------------------------------------------------
 # CrawlEvent — s3 필드 하위 호환
