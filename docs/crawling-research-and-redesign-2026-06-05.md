@@ -25,7 +25,7 @@
 중요 코드 지점:
 
 - `crawler/src/scheduler/crawl_scheduler.py`
-  - `MAX_POSTS_PER_BOARD` 기본값: 10
+  - `MAX_POSTS_PER_BOARD` 기본값: 30
   - `_fetch_post_urls()`: listing에서 게시글 URL 추출
   - `title_keywords` 불일치 URL drop
   - 사이트/보드/게시글 순차 처리
@@ -42,7 +42,7 @@
 
 ### 2.1 후보 발견량이 작다
 
-`MAX_POSTS_PER_BOARD=10`이고, 대부분의 사이트가 첫 listing 페이지 중심으로 동작한다. 페이지네이션, 검색 쿼리 기반 discovery, sitemap/Common Crawl 기반 seed 확장은 아직 없다.
+`MAX_POSTS_PER_BOARD=30`이고, 대부분의 사이트가 첫 listing 페이지 중심으로 동작한다. 페이지네이션, 검색 쿼리 기반 discovery, sitemap/Common Crawl 기반 seed 확장은 아직 없다.
 
 따라서 "크롤링을 많이 했는데 화면에 적게 뜬다"기보다는, 코드상 현재 크롤러 자체가 보수적으로 적은 후보만 본다.
 

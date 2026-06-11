@@ -26,7 +26,7 @@ Tracker 운영자 대시보드 — React 19 SPA. 탐지 결과 조회, 기간별
 | 폼·검증 | URL query 기반 탐지 필터 + 알림 채널/규칙 생성 폼 |
 | 알림 | Sonner (toast) |
 | 아이콘 | lucide-react |
-| 테마 | `next-themes` + `data-theme` (FOUC 가드는 `index.html` 인라인 스크립트, 라이트/다크 2-tier 토큰) |
+| 테마 | `data-theme` 커스텀 관리 (Topbar.tsx `useState` + localStorage + `document.documentElement.setAttribute`). FOUC 가드는 `index.html` 인라인 스크립트. `next-themes` 패키지 설치됨이나 ThemeProvider는 미사용. |
 | 모바일 | vaul drawer + `useIsMobile()` (Tailwind `md` 768px breakpoint) |
 | 단위 테스트 | Vitest(jsdom) + Testing Library + `@testing-library/jest-dom` |
 | Mock API | MSW v2 (`public/mockServiceWorker.js`, dev에서 항상 활성 / prod는 `VITE_USE_MOCK=true` 빌드만 활성) |
@@ -55,7 +55,7 @@ pnpm e2e             # 데스크톱 + 모바일 spec 모두 실행
 
 | 키 | 기본 | 설명 |
 |---|---|---|
-| `VITE_API_BASE_URL` | 미설정 | 실 API 엔드포인트. 미설정 시 axios baseURL이 `/api`로 떨어지고, dev에선 MSW worker가 가로채 mock 응답 반환. 로컬 백엔드 통합 시 `http://localhost:8080/api`. 프로덕션은 nginx reverse-proxy 경로 `/api` |
+| `VITE_API_BASE_URL` | 미설정 | 실 API 엔드포인트. 미설정 시 axios baseURL이 `/api`로 떨어지고, dev에선 MSW worker가 가로채 mock 응답 반환. 로컬 백엔드 통합 시 `http://localhost:8080/api`. 프로덕션은 Caddy reverse-proxy 경로 `/api` |
 | `VITE_USE_MOCK` | `false` | `true`로 빌드 시 prod 번들에도 MSW worker 포함 — frontend-only 데모용. `vite.config.ts`의 `removeDevMswWorker`가 이 플래그를 보고 `dist/mockServiceWorker.js` 보존 여부를 결정한다 |
 
 ## 디렉토리 구조
@@ -67,11 +67,11 @@ src/
 │   ├── ui/         # shadcn primitives (button, card, dialog, drawer, select, table, tabs, sonner, skeleton, kbd)
 │   ├── charts/     # Recharts 래퍼 (BarChart, LineChart, PieChart, colors)
 │   └── tracker/    # 도메인 컴포넌트 (DetectionRow, DetectionCard, BilingualPanel, ManualCrawlButton, ConfidenceBadge, TypeIcon, ChartCard, EmptyState, ShortcutsCheatsheet, RecentAlertList, labels)
-├── layouts/        # RootLayout / Sidebar(햄버거 drawer) / Topbar / PageContainer
-├── pages/          # Dashboard / DetectionList / DetectionDetail / Notifications (route-level lazy)
-├── lib/            # detectionFilter / filterOptions / severity / statsView / time / shortcuts / sources / useDetectionFilter / useIsMobile / utils
+├── layouts/        # RootLayout / Sidebar(햄버거 drawer) / Topbar / PageContainer / RightRail
+├── pages/          # Dashboard / DetectionList / DetectionDetail / Notifications / Stats (route-level lazy)
+├── lib/            # detectionFilter / filterOptions / severity / statsView / time / shortcuts / sources / useDetectionFilter / useIsMobile / utils / crawlProgress
 ├── mocks/          # MSW v2 handlers + dev fixtures
-├── main.tsx        # createRoot + ThemeProvider + QueryClientProvider + Router
+├── main.tsx        # createRoot + QueryClientProvider + GlobalShortcutProvider + RouterProvider
 └── index.css       # Tailwind v4 entry + CSS variable tokens (light/dark)
 ```
 

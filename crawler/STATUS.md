@@ -12,7 +12,7 @@
 - **안정 보드**: 11곳 (인벤 2 + PTT Lineage + Bahamut NC 8)
 - **운영 수집 profile**: `MAX_POSTS_PER_BOARD=30`, priority budget, detail concurrency 3, Dcard/52pojie serial
 - **인프라**: URL 중복 차단, 본문 SHA256 dedup, 공지·인증벽·캡차 자동 분류, inter-site delay
-- **테스트**: 142 unit/integration passed, ruff clean
+- **테스트**: 183 unit/integration passed, ruff clean
 - **detection(LLM)**: 별도 서비스에서 OpenAI 멀티모달 LLM 분류와 RDS 저장 처리
 
 ---
@@ -213,40 +213,43 @@ UrlDedupChecker 덕분에 인터벌 단축해도 같은 URL 재fetch 안 함.
 ## 6. 폴더 구조
 
 ```
-crawler_test/
-├── pyproject.toml          # uv 의존성 + pytest + ruff 설정
-├── uv.lock                 # 잠금 파일
+crawler/                              # monorepo 루트의 crawler/ 디렉터리
+├── requirements.txt                  # pip 의존성 (pip install -r requirements.txt)
+├── pytest.ini
 ├── .gitignore
-├── README.md               # 빠른 시작·실행 방법
-├── STATUS.md               # ← 이 문서
-├── crawler/
-│   ├── src/
-│   │   ├── crawl4ai_crawler.py     # crawl4ai 래퍼 (BrowserConfig + 옵션)
-│   │   ├── s3_uploader.py           # S3 업로드 (boto3, IAM 역할)
-│   │   ├── storage.py               # PostStorage (disk + S3)
-│   │   ├── preprocessor/
-│   │   │   ├── content_validator.py  # 사용자 글 vs 공지·차단 판별
-│   │   │   ├── dedup_checker.py      # 본문 SHA256 dedup
-│   │   │   ├── language_detector.py  # langdetect 래퍼
-│   │   │   ├── url_dedup_checker.py  # cross-run URL dedup
-│   │   │   └── serializer.py         # CrawlResult → CrawlEvent
-│   │   ├── queue/
-│   │   │   └── redis_publisher.py    # posts:queue LPUSH
-│   │   ├── scheduler/
-│   │   │   ├── crawl_scheduler.py    # CrawlPipeline + APScheduler
-│   │   │   └── trigger_listener.py   # Redis pub/sub 수동 트리거
-│   │   └── sites/
-│   │       └── registry.py           # SITES dict + SiteConfig + 헬퍼
-│   └── tests/
-│       ├── conftest.py
-│       ├── unit/                     # 6개 모듈, ~100건
-│       └── integration/              # 파이프라인 E2E
-├── shared/                          # crawler 공용
-│   ├── correlation_id.py
-│   ├── structured_logger.py
-│   ├── config/redis_config.py
-│   ├── exceptions/base_exception.py
-│   └── models/crawl_event.py
+├── README.md                         # 빠른 시작·실행 방법
+├── STATUS.md                         # ← 이 문서
+├── src/
+│   ├── crawl4ai_crawler.py           # crawl4ai 래퍼 (BrowserConfig + 옵션)
+│   ├── s3_uploader.py                # S3 업로드 (boto3, IAM 역할)
+│   ├── storage.py                    # PostStorage (disk + S3)
+│   ├── preprocessor/
+│   │   ├── content_validator.py      # 사용자 글 vs 공지·차단 판별
+│   │   ├── dedup_checker.py          # 본문 SHA256 dedup
+│   │   ├── language_detector.py      # langdetect 래퍼
+│   │   ├── url_dedup_checker.py      # cross-run URL dedup
+│   │   └── serializer.py             # CrawlResult → CrawlEvent
+│   ├── queue/
+│   │   └── redis_publisher.py        # posts:queue LPUSH
+│   ├── scheduler/
+│   │   ├── crawl_scheduler.py        # CrawlPipeline + APScheduler
+│   │   ├── trigger_listener.py       # Redis pub/sub 수동 트리거
+│   │   ├── candidate_scoring.py      # 후보 URL 우선순위 점수 계산
+│   │   └── crawl_job_progress.py     # 크롤 진행 상태 추적 (Redis)
+│   └── sites/
+│       └── registry.py               # SITES dict + SiteConfig + 헬퍼
+└── tests/
+    ├── conftest.py
+    ├── unit/                         # 11개 모듈, 161건
+    └── integration/                  # 파이프라인 E2E, 22건
+
+# shared/  ← monorepo 루트 (../shared/)에 위치, pip install -e ../shared 로 링크됨
+#   ├── correlation_id.py
+#   ├── structured_logger.py
+#   ├── config/redis_config.py
+#   ├── exceptions/base_exception.py
+#   ├── models/crawl_event.py
+#   └── interfaces/llm.py
 └── scripts/
     └── smoke_each_site.py            # 실 사이트 smoke 테스트 (수동 실행)
 ```
@@ -256,22 +259,20 @@ crawler_test/
 ## 7. 실행 / 테스트 / smoke
 
 ```bash
-cd crawler_test
-
-# 의존성 동기화 (.venv + uv.lock)
-uv sync
+cd crawler
+source .venv/bin/activate     # .venv 없으면: python3 -m venv .venv && pip install -r requirements.txt
 
 # 전체 테스트 (mock 기반, 인터넷 불필요)
-uv run pytest -q                    # 142 passed
+pytest -q                           # 183 passed
 
 # ruff 린트
-uv run ruff check crawler/ shared/ scripts/
+ruff check crawler/ shared/ scripts/
 
 # 실 사이트 smoke (전체 — tieba/nga 자동 제외)
-uv run python scripts/smoke_each_site.py
+python scripts/smoke_each_site.py
 
 # 특정 사이트만
-uv run python scripts/smoke_each_site.py bahamut_tl
+python scripts/smoke_each_site.py bahamut_tl
 
 # 운영 (Redis 필요)
 REDIS_URL=redis://localhost:6379 \
@@ -287,7 +288,7 @@ CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES=0 \
 CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS=0 \
 CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS=0 \
 CRAWL_INTERVAL_MINUTES=60 \
-uv run python -m crawler.src.scheduler.crawl_scheduler
+python -m crawler.src.scheduler.crawl_scheduler
 ```
 
 ---

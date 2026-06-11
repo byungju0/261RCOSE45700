@@ -7,8 +7,8 @@
 #        를 차단 → 2대 분리 불가 → 단일 EC2 회귀, 대신 t3.medium → **t3.xlarge
 #        (16GB)** 상향으로 메모리 여유 확보 (월 ~$124, budget $215 안에서 OK).
 #
-# 컨테이너: redis + crawler + detection + api + dashboard (5개)
-# 노출 포트: 22 (SSH) + 80 (dashboard) + 8080 (api). redis 6379는 호스트 노출 X
+# 컨테이너: redis + crawler + detection + api + dashboard + caddy (6개)
+# 노출 포트: 22 (SSH) + 80/443 (Caddy TLS) + 8080 (api). redis 6379는 호스트 노출 X
 # (cross-SG ingress 차단 우회는 docker network 내부 통신으로 자연스럽게 해소).
 #
 # 사전 요구사항:

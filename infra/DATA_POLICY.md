@@ -11,7 +11,7 @@
 
 | 데이터 | 출처 | 저장 위치 |
 |---|---|---|
-| 게시글 원본 HTML | 외부 사이트 (taobao, tailstar 등) | S3 `tracker-archive-{env}-*` (SSE-S3, 비공개) |
+| 게시글 원본 HTML | 외부 사이트 (Inven, PTT, Bahamut 등 한·중·대만 게임 커뮤니티) | S3 `tracker-archive-{env}-*` (SSE-S3, 비공개, 현재 ENABLE_S3_UPLOAD=false) |
 | 게시글 메타데이터 | 크롤러 추출 결과 | RDS `posts` 테이블 |
 | 번역 결과 (한국어) | OpenAI 멀티모달 LLM 응답 | RDS `detections.translated_text` 컬럼 |
 | 탐지 결과 (불법 여부 + confidence + 근거) | OpenAI 멀티모달 LLM 분류 결과 | RDS `detections` 테이블 |
@@ -30,7 +30,7 @@
 
 ## 3. 외부 공개 금지
 
-- **원본 HTML**: S3 버킷은 퍼블릭 차단(`block_public_*` 4종 true), Crawler IAM Role만 PutObject 가능. 비-TLS 접근 deny (`aws:SecureTransport=false`).
+- **원본 HTML**: S3 버킷은 퍼블릭 차단(`block_public_*` 4종 true), 비-TLS 접근 deny (`aws:SecureTransport=false`). 학생 IAM 제약으로 Crawler IAM Role 생성 불가 — 현재 `ENABLE_S3_UPLOAD=false`(S3 아카이브 미활성). 개인 계정 이전 후 IAM Role + `s3:PutObject` 권한 한정 정책 추가 예정.
 - **탐지 결과**: API는 인증된 내부 사용자만 접근. 외부 공개 API 미제공.
 - **로그**: 학교 organization trail은 운영 감사 목적으로만 학교 관리자 접근.
 

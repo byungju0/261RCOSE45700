@@ -1,4 +1,4 @@
-# crawler_test
+# crawler
 
 NC 게임(리니지 / 아이온 / BNS / TL 등) 사설서버·매크로·핵 탐지를 위한 한·중·대만권 게시판 크롤링.
 
@@ -9,23 +9,27 @@ NC 게임(리니지 / 아이온 / BNS / TL 등) 사설서버·매크로·핵 탐
 ## 빠른 시작
 
 ```bash
-cd crawler_test
+cd crawler
 
-# 1) 의존성 설치 (.venv + uv.lock 자동)
-uv sync
+# 1) 가상환경 생성 (최초 1회)
+python3 -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
 
-# 2) Playwright Chromium (최초 1회만)
-uv run playwright install chromium
+# 2) 의존성 설치
+pip install -r requirements.txt
 
-# 3) 단위/통합 테스트 (mock, 인터넷 불필요)
-uv run pytest -q                              # 142 passed 예상
+# 3) Playwright Chromium (최초 1회만)
+playwright install chromium
 
-# 4) ruff 린트
-uv run ruff check crawler/ shared/ scripts/
+# 4) 단위/통합 테스트 (mock, 인터넷 불필요)
+pytest -q                                          # 183 passed 예상
 
-# 5) 실 사이트 smoke (tieba/nga 자동 제외)
-uv run python scripts/smoke_each_site.py
-uv run python scripts/smoke_each_site.py bahamut_tl    # 특정 사이트만
+# 5) ruff 린트
+ruff check crawler/ shared/ scripts/
+
+# 6) 실 사이트 smoke (tieba/nga 자동 제외)
+python scripts/smoke_each_site.py
+python scripts/smoke_each_site.py bahamut_tl    # 특정 사이트만
 ```
 
 ---
@@ -33,24 +37,25 @@ uv run python scripts/smoke_each_site.py bahamut_tl    # 특정 사이트만
 ## 디렉터리 구조
 
 ```
-crawler_test/
-├── pyproject.toml          # uv + pytest + ruff
-├── uv.lock
-├── STATUS.md               # ⭐ 전체 현황 / 아키텍처 / 사이트별 진단
-├── README.md               # 이 문서 (빠른 시작)
-├── crawler/
-│   ├── src/                # 본체
-│   │   ├── crawl4ai_crawler.py
-│   │   ├── storage.py · s3_uploader.py
-│   │   ├── preprocessor/   # content_validator, dedup_checker,
-│   │   │                   # url_dedup_checker, language_detector, serializer
-│   │   ├── queue/          # redis_publisher
-│   │   ├── scheduler/      # crawl_scheduler (CrawlPipeline + APScheduler) + trigger_listener
-│   │   └── sites/          # registry — SiteConfig + SITES dict
-│   └── tests/              # unit + integration (142건)
-├── shared/                 # crawl_event, redis_config, logger 등 공용
-└── scripts/
-    └── smoke_each_site.py  # 실 사이트 검증 (수동 실행)
+crawler/                         # 이 디렉터리 (monorepo 루트의 crawler/)
+├── requirements.txt             # pip 의존성
+├── pytest.ini
+├── STATUS.md                    # ⭐ 전체 현황 / 아키텍처 / 사이트별 진단
+├── README.md                    # 이 문서 (빠른 시작)
+├── src/                         # 본체
+│   ├── crawl4ai_crawler.py
+│   ├── storage.py · s3_uploader.py
+│   ├── preprocessor/            # content_validator, dedup_checker,
+│   │                            # url_dedup_checker, language_detector, serializer
+│   ├── queue/                   # redis_publisher
+│   ├── scheduler/               # crawl_scheduler (CrawlPipeline + APScheduler),
+│   │                            # trigger_listener, candidate_scoring, crawl_job_progress
+│   └── sites/                   # registry — SiteConfig + SITES dict
+└── tests/                       # unit + integration (183건)
+
+# shared/  ← monorepo 루트에 위치 (../shared/)
+#   crawl_event, redis_config, logger, interfaces/llm 등 공용
+#   pip install -e ../shared 로 crawler venv에 링크됨 (requirements.txt 참조)
 ```
 
 ---
@@ -58,9 +63,12 @@ crawler_test/
 ## 운영 (Redis 필요)
 
 ```bash
+# 가상환경 활성화 후 실행 (또는 .venv/bin/python 직접 사용)
+source .venv/bin/activate
+
 # 가장 단순한 형태 — 기본 60분 주기, 운영 profile 사용
 REDIS_URL=redis://localhost:6379 \
-uv run python -m crawler.src.scheduler.crawl_scheduler
+python -m crawler.src.scheduler.crawl_scheduler
 
 # EC2 운영 권장값을 명시해서 실행
 REDIS_URL=redis://localhost:6379 \
@@ -79,7 +87,7 @@ CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS=0 \
 INTER_SITE_DELAY_SECONDS=15 \
 INTER_BOARD_DELAY_SECONDS=3 \
 ENABLE_S3_UPLOAD=false \
-uv run python -m crawler.src.scheduler.crawl_scheduler
+python -m crawler.src.scheduler.crawl_scheduler
 ```
 
 전체 환경변수 목록은 [STATUS.md §5](./STATUS.md#5-운영-다이얼-환경변수) 참조.
@@ -114,7 +122,7 @@ Validator는 prefix dispatch — `my_new_*` 같은 family 추가 시 `content_va
 | boto3 / S3 | 옵션 (ENABLE_S3_UPLOAD=true 시) | unittest.mock.patch |
 | crawl4ai (Playwright) | 브라우저 자동화 | patch("...AsyncWebCrawler") |
 
-→ **`uv run pytest` 는 외부 서비스 없이 100% mock 으로 동작.**
+→ **`pytest` 는 외부 서비스 없이 100% mock 으로 동작.**
 → 실 사이트 smoke 만 인터넷 + Chromium 필요.
 
 ---
