@@ -82,27 +82,23 @@ def test_system_prompt_defines_confidence_rubric() -> None:
     assert "0.90 또는 0.95를 기본값처럼 반복하지 말고" in SYSTEM_PROMPT
 
 
-def test_build_system_prompt_base_plus_type_guidance_for_unknown_source() -> None:
-    # source_id 없음/미매핑 → 베이스 + 유형 가이드만, 게임 오버레이는 없음 (동작 중립 fallback).
+def test_build_system_prompt_base_plus_type_and_domain_guide() -> None:
+    # 2026-06-11 재정의: 베이스 + 유형 가이드 + 공용 도메인 가이드 (게임별 오버레이 제거).
     prompt = build_system_prompt(None)
     assert "NC AI 게임 보안 분석가" in prompt           # 베이스 보존
     assert "유형 판별 가이드:" in prompt                 # Stage 2-A 항상 적용
-    assert "게임 맥락:" not in prompt                    # 오버레이 없음
+    assert "공용 도메인 가이드" in prompt                # 공용 도메인 가이드 항상 주입
+    # 안정부 순서(캐싱 prefix): 베이스 < 유형 가이드 < 도메인 가이드.
+    assert prompt.index("유형 판별 가이드:") < prompt.index("공용 도메인 가이드")
 
 
-def test_build_system_prompt_injects_game_overlay() -> None:
-    # 매핑된 source_id → 게임 오버레이 주입. 안정부(베이스+가이드)가 오버레이보다 앞 (캐싱 prefix).
-    prompt = build_system_prompt("bahamut_lineage")
-    assert "유형 판별 가이드:" in prompt
-    assert "게임 맥락:" in prompt
-    assert prompt.index("유형 판별 가이드:") < prompt.index("게임 맥락:")
-
-
-def test_build_system_prompt_unknown_source_falls_back_to_base() -> None:
+def test_build_system_prompt_site_independent() -> None:
+    # 라우팅 제거(FR12-C): source_id가 달라도 동일 프롬프트.
+    assert build_system_prompt("bahamut_lineage") == build_system_prompt("does_not_exist")
     assert build_system_prompt("does_not_exist") == build_system_prompt(None)
 
 
-def test_classify_threads_source_id_into_system_prompt() -> None:
+def test_classify_injects_domain_guide_into_system_prompt() -> None:
     mock_openai = MagicMock()
     mock_openai.chat.completions.create.return_value = _make_openai_response(
         _classification_payload()
@@ -111,7 +107,7 @@ def test_classify_threads_source_id_into_system_prompt() -> None:
     client.classify("게시글", source_id="bahamut_lineage")
 
     system_msg = mock_openai.chat.completions.create.call_args.kwargs["messages"][0]["content"]
-    assert "게임 맥락:" in system_msg  # 게임 오버레이가 system prompt에 반영됨
+    assert "공용 도메인 가이드" in system_msg  # 공용 도메인 가이드가 system prompt에 반영됨
 
 
 def test_classify_with_images_sends_multimodal_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,6 +141,104 @@ def test_send_images_false_falls_back_to_text_only() -> None:
     content = mock_openai.chat.completions.create.call_args.kwargs["messages"][1]["content"]
     # 이미지 토글 off → image_url 블록이 추가되지 않아야 함.
     assert not any(b.get("type") == "image_url" for b in content)
+
+
+def test_split_text_image_image_branch_wins_when_observed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_SEND_IMAGES", "true")
+    monkeypatch.setenv("LLM_SPLIT_TEXT_IMAGE", "true")
+
+    mock_openai = MagicMock()
+    text_resp = _make_openai_response(_classification_payload(type="기타", confidence=0.60))
+    image_resp = _make_openai_response(
+        _classification_payload(type="핵_치트", confidence=0.95, image_observed=True),
+        prompt_tokens=120, completion_tokens=50,
+    )
+    mock_openai.chat.completions.create.side_effect = [text_resp, image_resp]
+
+    client = LLMClient(client=mock_openai)
+    response = client.classify("게시글", images=["https://example.com/screenshot.jpg"])
+
+    assert response.type == "핵_치트"
+    assert response.confidence == pytest.approx(0.95)
+    assert response.image_observed is True
+    # 두 호출의 토큰 합산.
+    assert response.input_tokens == 100 + 120
+    assert response.output_tokens == 40 + 50
+    assert mock_openai.chat.completions.create.call_count == 2
+
+
+def test_split_text_image_text_branch_wins_when_not_observed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_SEND_IMAGES", "true")
+    monkeypatch.setenv("LLM_SPLIT_TEXT_IMAGE", "true")
+
+    mock_openai = MagicMock()
+    text_resp = _make_openai_response(_classification_payload(type="계정_거래", confidence=0.88))
+    image_resp = _make_openai_response(
+        _classification_payload(type="기타", confidence=0.50, image_observed=False)
+    )
+    mock_openai.chat.completions.create.side_effect = [text_resp, image_resp]
+
+    client = LLMClient(client=mock_openai)
+    response = client.classify("게시글", images=["https://example.com/screenshot.jpg"])
+
+    assert response.type == "계정_거래"
+    assert response.confidence == pytest.approx(0.88)
+    assert mock_openai.chat.completions.create.call_count == 2
+
+
+def test_all_s3_images_fall_back_to_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_SEND_IMAGES", "true")
+
+    mock_openai = MagicMock()
+    mock_openai.chat.completions.create.return_value = _make_openai_response(_classification_payload())
+
+    client = LLMClient(client=mock_openai)
+    client.classify("텍스트", images=["s3://bucket/key.jpg"])
+
+    # s3:// 는 _resolve_image_url 이 None 반환 → image_blocks 비어있음 → 텍스트 only 단일 호출.
+    assert mock_openai.chat.completions.create.call_count == 1
+    content = mock_openai.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert not any(b.get("type") == "image_url" for b in content)
+
+
+def test_retry_after_ms_header_takes_priority_over_retry_after() -> None:
+    import httpx as _httpx
+    from openai import RateLimitError as OpenAIRateLimitError
+    from detection.src.pipeline.llm_client import _retry_after_from
+
+    real_response = _httpx.Response(
+        status_code=429,
+        headers={"retry-after-ms": "3000", "Retry-After": "999"},
+        request=_httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+    )
+    exc = OpenAIRateLimitError(message="429", response=real_response, body=None)
+    # ms 헤더 우선: 3000ms → 3s (Retry-After: 999 는 무시).
+    assert _retry_after_from(exc) == 3
+
+
+def test_run_structured_invalid_json_raises_value_error() -> None:
+    mock_openai = MagicMock()
+    mock_openai.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="not-valid-json"))],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+    )
+
+    client = LLMClient(client=mock_openai)
+    with pytest.raises(ValueError, match="JSON 파싱"):
+        client.run_structured(
+            system_prompt="시스템",
+            user_text="게시글",
+            schema=CLASSIFICATION_SCHEMA,
+            schema_name="test_schema",
+            model="gpt-4o",
+        )
+
+
+def test_missing_api_key_raises_runtime_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # client=None 경로: placeholder 키면 RuntimeError (실수로 배포되는 것을 조기에 차단).
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-REPLACE-placeholder")
+    with pytest.raises(RuntimeError, match="placeholder"):
+        LLMClient()
 
 
 def test_rate_limit_retries_after_sleep_then_raises(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -15,6 +15,9 @@ REDIS_KEY_POSTS_CORRUPT: str = "posts:corrupt"
 REDIS_KEY_POSTS_DEDUP: str = "posts:dedup"
 REDIS_KEY_SEEN_URLS: str = "posts:seen_urls"
 
+# Story 3-7 — LinkTracer 1-hop fetch 결과 캐시 (DB1, TTL 7일). 키 = prefix + sha256(url).
+REDIS_KEY_LINKTRACE_PREFIX: str = "linktrace:"
+
 # 2026-05-27 PIVOT — OpenAI 멀티모달 LLM 단일 호출 rate limit key.
 REDIS_KEY_LLM_RATE_LIMIT_CLASSIFY: str = "llm:rate_limit:classify"
 

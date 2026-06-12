@@ -19,6 +19,7 @@ from shared.config.redis_config import (
     REDIS_KEY_POSTS_PROCESSING,
 )
 from shared.models.crawl_event import CrawlEvent
+from shared.interfaces.llm import LLMResponse
 
 
 def _build_event(language: str = "ko", raw_text: str = "정상 게시글") -> CrawlEvent:
@@ -122,3 +123,55 @@ def test_pipeline_calls_repository_save_on_success(mq_redis, rate_limit_redis) -
     assert kwargs["tier"] == "T4"  # clean mock은 type=기타 → T4
     assert kwargs["model_version"] == "openai:gpt-4o:2024-08-06"
     assert kwargs["response"].type == "기타"
+
+
+def test_pipeline_preserves_original_image_urls_when_s3_paths_exist(
+    mq_redis, rate_limit_redis
+) -> None:
+    """S3 archive 경로가 있어도 원본 HTTP 이미지 URL을 분류기에 함께 전달한다."""
+    from detection.src.rate_limit.token_bucket import TokenBucket
+
+    class RecordingLLM:
+        def __init__(self) -> None:
+            self.images: list[str] | None = None
+
+        def classify(self, text, images=None, source_id=None):
+            self.images = list(images or [])
+            return LLMResponse(
+                type="기타",
+                confidence=0.1,
+                reason_ko="테스트",
+                translated_text_ko=None,
+                image_observed=False,
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=0.0,
+            )
+
+    event = CrawlEvent(
+        post_id="image_001",
+        source_id="ptt_lineage",
+        site_name="PTT Lineage",
+        raw_text="이미지 포함 게시글",
+        image_urls=["https://example.com/original.png"],
+        s3_image_paths=["s3://bucket/images/ptt/2026-06-11/image_001/img_000.png"],
+        language="ko",
+        detected_at="2026-06-11T00:00:00Z",
+        correlation_id="cid-image-001",
+    )
+    llm = RecordingLLM()
+    bucket = TokenBucket(rate_limit_redis, capacity=100, refill_per_sec=100)
+    classifier = LLMClassifier(llm, bucket, model_version="openai:gpt-4o:2024-08-06")
+    pipeline = DetectionPipeline(
+        classifier,
+        TierRouter(),
+        CostCap(rate_limit_redis),
+        RetryHandler(mq_redis),
+    )
+
+    pipeline.process(event.to_json())
+
+    assert llm.images == [
+        "https://example.com/original.png",
+        "s3://bucket/images/ptt/2026-06-11/image_001/img_000.png",
+    ]

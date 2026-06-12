@@ -4,6 +4,9 @@
   "reason_ko": "게시글에 매크로 프로그램을 이용한 대리 레벨업 서비스 판매 광고가 포함되어 있습니다. 연락처 및 가격 정보가 명시됨.",
   "translated_text_ko": "대리 레벨업 서비스 제공합니다. 프리스타일 풋볼 계정 모든 서버 가능. KakaoTalk: macro_seller_2024",
   "image_observed": false,
+  "game_context": "프리스타일 풋볼(불명)",
+  "needs_image": false,
+  "needs_link_trace": true,
   "input_tokens": 150,
   "output_tokens": 80,
   "cost_usd": 0.00118

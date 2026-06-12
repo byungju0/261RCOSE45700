@@ -29,8 +29,34 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from detection.src.prompts.registry import SOURCE_ID_TO_GAME  # noqa: E402
 from shared.interfaces.llm import ALLOWED_DETECTION_TYPES  # noqa: E402
+
+# source_id → game_key 매핑. 라벨 코퍼스(Story 3-5)를 game×type으로 그룹핑하기 위한 라벨링
+# CLI 전용 — 분류 경로에서는 제거됨(Story 3-7 FR12-C, 게임 맥락 자가 추론). 키는
+# crawler/src/sites/registry.py SITES dict 키와 일치한다.
+SOURCE_ID_TO_GAME: dict[str, str] = {
+    # 리니지 PC/클래식
+    "ptt": "lineage",
+    "inven_lineage_classic": "lineage",
+    "bahamut_lineage": "lineage",
+    "bahamut_lineage_classic": "lineage",
+    # 리니지 모바일 (M/W)
+    "bahamut_lineage_m": "lineage_mobile",
+    "bahamut_lineage_w": "lineage_mobile",
+    # 아이온
+    "bahamut_aion": "aion",
+    "bahamut_aion2": "aion",
+    # 블레이드 & 소울
+    "bahamut_bns": "bns",
+    # 쓰론 앤 리버티
+    "bahamut_tl": "tl",
+    # 혼합 모바일/온라인 (NC 키워드 필터)
+    "ptt_mobile_game": "mixed_mobile",
+    "dcard": "mixed_mobile",
+    "dcard_online": "mixed_mobile",
+    # 크래킹/리버싱 포럼
+    "52pojie": "cracking_forum",
+}
 
 _VALID_TIERS = ("T1", "T2", "T3", "T4")
 _EXCERPT_CHARS = 600

@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from detection.src.prompts.registry import SOURCE_ID_TO_GAME  # noqa: E402
+from detection.scripts.label_detections import SOURCE_ID_TO_GAME  # noqa: E402
 
 SNAPSHOT_PATH = PROJECT_ROOT / "docs" / "labelset-snapshot.md"
 _UNMAPPED = "(unmapped)"

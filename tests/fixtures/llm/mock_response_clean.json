@@ -4,6 +4,9 @@
   "reason_ko": "정상적인 게임 정보 공유 게시글입니다. 판매·광고·불법 행위 관련 내용 없음.",
   "translated_text_ko": null,
   "image_observed": false,
+  "game_context": "리니지(불명 서버)",
+  "needs_image": false,
+  "needs_link_trace": false,
   "input_tokens": 120,
   "output_tokens": 45,
   "cost_usd": 0.00075

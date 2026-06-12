@@ -225,3 +225,31 @@ Task 5 [USER] `/opt/app/secrets/*` + `/opt/app/.env` 작성에 필요한 외부 
 - **stale Redis 키 `varco:rate_limit:translate` 운영 정리 (production migration)** — 본 PR은 feature 브랜치 단계라 운영 영향 없음. 운영 배포 전 stale 키 삭제 1회 필요 시 Story 3-3 또는 5-2 deploy 단계에 포함.
 - **DetectionPipeline.process()에서 번역 완료 log 제거에 따른 관측성 갭** — Story 3-3에서 LLM 호출 + Tier 라우팅 log로 자연 복구.
 - **detection_pipeline.py가 `event.language`나 빈 raw_text guard 없음** — interim 상태. Story 3-3 LLMClient 호출 경로에서 guard 또는 OpenAI 측 처리에 위임.
+
+## Deferred from: Story 3-5 재정의 (2026-06-02 — few-shot 데이터 수집으로 전환)
+
+Story 3-5를 "정확도 사전 측정"에서 **"few-shot 학습용 라벨 데이터 수집 기반"**으로 재정의(운영자 create-story 결정: "데이터를 모아서 나중에 few-shot learning을 구현할 방향"). 재정의 3-5는 라벨 수집(RDS 컬럼)·코퍼스 export·경량 스냅샷까지만 담당. 아래는 원안에서 빠져 미래로 이월된 항목.
+
+- **정식 정확도 측정 (≥300 라벨셋 + Tier별 confusion matrix + 비용/p95)** — 원 Story 3.5 AC. ≥300건 라벨셋(Tier별 ≥75, 이미지 첨부 ≥50), 전체 Precision ≥0.80 / T1 Recall ≥0.80 / T2 ≥0.65 / T3 ≥0.50 게이트, Tier별 confusion matrix(T1/T2/T3/T4 × predicted), 게시글당 평균 비용(USD)·p95 latency·이미지 유무 분리 집계, 라이브 검증(≥30건 실 OpenAI) 별도 기록, 1회 배치 ≤30분(NFR3). **재정의 3-5의 `labelset_snapshot.py`(overall agreement + 커버리지 카운트)는 이 정식 측정의 경량 선행 버전** — 라벨이 ≥300건 누적되면 별도 "측정 스토리"에서 confusion matrix/비용/p95로 승격. 산출물: `docs/quality-gate-epic3.md` / `docs/quality-gate-epic3-live.md`. [Source: epics.md#Story 3.5 원안, PRD Success Criteria L73-78]
+- **few-shot 프롬프트 주입 (Stage 2-B 실제 구현)** — 재정의 3-5는 `detection/src/prompts/examples/{game_key}.jsonl` 코퍼스 **생성**과 포맷 계약(`examples/README.md`)까지만. `detection/src/pipeline/llm_client.py::build_system_prompt()`의 Stage 2-B 빈 슬롯에 예시를 실제로 **선택·삽입**하는 로직 + 토큰 예산 런타임 관리 + few-shot 전/후 정확도 효과 측정은 **별도 미래 스토리**. 라벨 품질·코퍼스 충분성을 본 뒤 주입 위치/형식 결정(조기 구현 시 프롬프트 캐싱 prefix 안정성·토큰 비용 회귀 위험). [연결: 3-0 closure 이미지/번역 spot-check + 라벨셋 확장]
+- **Spring API / 대시보드 라벨링 연동** — human_label RDS 컬럼은 backend-connected이나, 재정의 3-5는 detection 측 쓰기(CLI)까지만. `DetectionResponse.humanLabel` 노출 + 목록 `humanLabel` 필터 + 대시보드 인-앱 라벨링 UI는 **Epic 4 follow-up**. CLI 라벨링이 운영 부담이 되면 우선순위 상향.
+
+## Deferred from: Epic 3 멀티 에이전트 재정의 (2026-06-11 — Correct Course)
+
+단일 호출 → 비용 차등 멀티 에이전트 재정의(`sprint-change-proposal-2026-06-11.md`). 본 기수 범위는 에이전트 골격(3-7) + 심층 경로(3-8) + A/B·리허설(3-9) + T1 알림(3-10). 아래는 의도적으로 본 기수에서 제외하고 미래로 이월한 항목.
+
+- **multi-hop 링크 추적** — 본 기수는 **1-hop fetch만**(FR12-B). 링크 페이지에서 발견한 추가 링크를 다시 따라가는 multi-hop은 anti-bot·SSRF 표면 확대 + 안전·법무 리스크 + 타임라인 사유로 제외. LinkTracer가 수집한 2차 링크는 증거(`indicators`)로만 기록하고 추적하지 않는다. 1-hop 운영 데이터로 가치가 확인되면 depth-제한 multi-hop을 별도 스토리로 승격. [연결: 3-7 LinkTracer]
+- **사람 리뷰 큐 (human-in-the-loop)** — PRD § 탐지 오류 관리: "T1 오탐이 무고한 사용자에게 알림 가는 걸 막으려 운영자 승인 후 발송." 현재 백엔드 알림 시스템(`NotificationEventProcessor`)은 룰 매칭 시 **즉시 발송**하며 승인 단계가 없다. 승인 워크플로우는 (a) 발송 보류 상태 + (b) 프론트 승인/거부 UI + (c) 승인 후 dispatch 분기 신설이 필요 — 현 즉시 발송 설계와 충돌하므로 별도 설계 스토리. 데모에는 불필요(룰로 T1 즉시 발송으로 충분). [Source: PRD § 탐지 오류 관리, 구 Story 3.6/3.10]
+- **T2 일일 다이제스트 / T3 주간 리포트 알림** — FR16-NEW-2 중 T2/T3 알림. 현재 백엔드 알림 룰은 `send_mode=IMMEDIATE`만 지원(`notification_rules` CHECK 제약). 다이제스트/주간 배치 발송은 `send_mode` 확장 + 스케줄러 추가가 필요한 미래 스토리. T1 즉시 알림은 기존 시스템으로 이미 동작. [Source: epics.md#Story 3.6 이력 AC, V7__notification_outbox.sql]
+- **Tier별 90일 retention archive job** — 구 Story 3-6의 FR16-NEW-3. `retention/tier_retention_job.py`(T2·T3·T4 90일 후 S3 archive 이동 + `detections.archived_at` + Flyway V_retention) 미구현. 크롤 볼륨이 낮아 보존 기간 내 폐기 압력이 없어 전수 저장만 유지. 운영 데이터 누적으로 저장 부담 발생 시 승격. [Source: epics.md#Story 3.6 이력 AC, PRD FR16-NEW-3]
+- **few-shot 프롬프트 주입 (Stage 2-B) — 재확인** — 멀티 에이전트 재정의에서도 여전히 defer. S1 TriageAgent 프롬프트에 Story 3-5 코퍼스를 정적 주입하는 것은 시간 여유 시 stretch goal(3-9 이후). 위 "Story 3-5 재정의" 항목과 동일 작업이며, 주입 지점이 `build_system_prompt()` Stage 2-B에서 트리아지 에이전트 프롬프트로 이동했다는 점만 갱신.
+- **대시보드 증거 패널 (agent_runs 노출)** — `agent_runs`(V10)의 스테이지별 trace(링크 fetch 결과·이미지 판독 근거·스테이지 비용)를 탐지 상세 화면에 보여주는 UI는 **Epic 4 follow-up**. 본 기수는 trace를 RDS에 기록만 하고 대시보드는 기존 detections 5필드만 표시(계약 불변). 데모에서 "왜 불법으로 판정했는가"의 증거 추적성을 보여주려면 우선순위 상향 검토.
+- **링크 fetch JS 렌더링** — LinkTracer는 httpx + html2text(정적 HTML)만. JS 실행이 필요한 SPA형 배포 페이지는 본문 수집 불가(제목·메타데이터만). crawl4ai/Chromium 도입은 detection 컨테이너 부담 + 안전 리스크로 제외. 정적 fetch로 놓치는 비율이 높으면 별도 headless fetch 트랙 검토.
+- **재시도 시 stage 결과 재사용 캐시** — RetryHandler가 메시지 단위로 재시도할 때 이미 완료된 LLM stage 결과를 Redis(`agentrun:{post_id}` TTL 1h)에 캐시해 비용 중복을 막는 최적화. 3-8 stretch. 미구현 시 재시도가 전 stage를 재호출하나, 큐 볼륨이 낮아 비용 영향 제한적.
+
+## Deferred from: code review of story 3-7 (2026-06-11)
+
+3-layer 적대적 코드 리뷰(Blind Hunter / Edge Case Hunter / Acceptance Auditor)에서 defer 분류된 항목.
+
+- **LinkTracer 규칙 판정 불가 시 gpt-4o-mini 요약 fallback 미구현** — Task 7 명세는 "page_title+발췌 텍스트가 규칙으로 판정 불가할 때만 mini 요약 호출"을 절충안으로 포함했으나, 현 규칙 엔진(`_detect_indicators`)은 항상 boolean 판정을 산출해 "판정 불가" 트리거 조건 자체가 정의되지 않음. 3-8 Synthesizer가 link_trace 증거를 소비하는 설계와 함께 결정(증거 품질이 부족하면 그때 mini 요약 추가). [연결: 3-7 link_tracer.py `_detect_indicators`]
+- **DNS rebinding TOCTOU 잔여 리스크 (IP 핀 미적용)** — `validate_url()`이 해석한 IP와 httpx가 fetch 시 재해석하는 IP가 다를 수 있음(rebinding 윈도우). 코드 docstring에 2차 방어(fetch 직전 재검증)로 문서화된 설계 결정. 보완 옵션: (a) 해석 IP로 직접 접속하는 IP-핀 custom transport + Host 헤더 유지, (b) 운영 `LINK_TRACE_PROXY` egress 프록시에서 사설망 차단 정책. 운영 배포 전 (b) 권장. [연결: 3-7 link_fetch_guard.py `validate_url`]

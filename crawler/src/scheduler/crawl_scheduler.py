@@ -1052,28 +1052,36 @@ class CrawlPipeline:
             stats.skipped_dedup += 1
             return
 
-        language = language_detector.detect(text, correlation_id=cid)
-        post_id = site.post_id_extractor(post_url)
-        storage_result = self._storage.save(
-            site_id=site_id,
-            post_id=post_id,
-            url=post_url,
-            result=result,
-            correlation_id=cid,
-        )
-        event = to_crawl_event(
-            result,
-            site_id=site_id,
-            site=site,
-            url=post_url,
-            language=language,
-            correlation_id=cid,
-            s3_text_path=storage_result.s3_text_path,
-            s3_image_paths=storage_result.s3_image_paths,
-        )
-        self._publisher.enqueue(event.to_json(), correlation_id=cid)
-        stats.enqueued += 1
-        self._mark_successful_enqueue(post_url, result.markdown, cid)
+        try:
+            language = language_detector.detect(text, correlation_id=cid)
+            post_id = site.post_id_extractor(post_url)
+            storage_result = self._storage.save(
+                site_id=site_id,
+                post_id=post_id,
+                url=post_url,
+                result=result,
+                correlation_id=cid,
+            )
+            event = to_crawl_event(
+                result,
+                site_id=site_id,
+                site=site,
+                url=post_url,
+                language=language,
+                correlation_id=cid,
+                s3_text_path=storage_result.s3_text_path,
+                s3_image_paths=storage_result.s3_image_paths,
+            )
+            self._publisher.enqueue(event.to_json(), correlation_id=cid)
+            stats.enqueued += 1
+            self._mark_successful_enqueue(post_url, result.markdown, cid)
+        except Exception as exc:
+            stats.failed += 1
+            _logger.error(
+                "게시글 후처리 실패: %s — %s", post_url, exc,
+                extra={"correlation_id": cid, "service": _SERVICE_NAME},
+                exc_info=True,
+            )
 
     async def _process_post(
         self,

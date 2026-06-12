@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from detection.src.agents.contracts import AgentRunTrace
 from detection.src.repository.detection_repository import DetectionRepository
 from detection.tests.conftest import requires_pg
 from shared.interfaces.llm import LLMResponse
@@ -162,6 +163,87 @@ def test_save_translated_text_persisted(clean_db) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Story 3-7: agent_runs 동일 트랜잭션 저장 (V10)
+# ---------------------------------------------------------------------------
+
+_AGENTIC_MV = "agentic:v1:gpt-4o-mini:2026-06"
+
+
+def _traces() -> list[AgentRunTrace]:
+    return [
+        AgentRunTrace(stage="normalize", model=None, latency_ms=1, output={"links": ["https://x"]}),
+        AgentRunTrace(
+            stage="triage", model="gpt-4o-mini", input_tokens=100, output_tokens=30,
+            cost_usd=0.00042, latency_ms=120, output={"type": "핵_치트"},
+        ),
+        AgentRunTrace(
+            stage="link_trace", model=None, latency_ms=80,
+            output={"links": [{"url": "https://x", "kind": "web"}]},
+        ),
+    ]
+
+
+@requires_pg
+def test_save_with_agent_runs_persists_traces(clean_db) -> None:
+    repo = DetectionRepository(clean_db)
+    event = _build_event(post_id="agentic_001")
+
+    detection_id = repo.save(
+        event, _build_response(), tier="T1", model_version=_AGENTIC_MV, agent_runs=_traces()
+    )
+    assert detection_id is not None
+
+    with clean_db.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT stage, model, cost_usd FROM agent_runs WHERE detection_id=%s ORDER BY id",
+                (detection_id,),
+            )
+            rows = cur.fetchall()
+            assert [r[0] for r in rows] == ["normalize", "triage", "link_trace"]
+            triage = next(r for r in rows if r[0] == "triage")
+            assert triage[1] == "gpt-4o-mini"
+            assert float(triage[2]) == pytest.approx(0.00042, rel=1e-3)
+            # output JSONB 저장 확인.
+            cur.execute(
+                "SELECT output->'links'->>0 FROM agent_runs WHERE detection_id=%s AND stage='normalize'",
+                (detection_id,),
+            )
+            assert cur.fetchone()[0] == "https://x"
+
+
+@requires_pg
+def test_agent_runs_skipped_on_idempotent_conflict(clean_db) -> None:
+    """detections 멱등 conflict(2회차)면 agent_runs도 INSERT 안 됨."""
+    repo = DetectionRepository(clean_db)
+    event = _build_event(post_id="agentic_dup")
+
+    first = repo.save(event, _build_response(), tier="T1", model_version=_AGENTIC_MV, agent_runs=_traces())
+    second = repo.save(event, _build_response(), tier="T1", model_version=_AGENTIC_MV, agent_runs=_traces())
+
+    assert first is not None
+    assert second is None  # conflict skip
+
+    with clean_db.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM agent_runs")
+            assert cur.fetchone()[0] == 3  # 첫 저장의 3건만, 두 번째는 skip
+
+
+@requires_pg
+def test_single_mode_save_writes_no_agent_runs(clean_db) -> None:
+    """agent_runs=None(single 모드)이면 agent_runs 테이블에 아무것도 안 들어감."""
+    repo = DetectionRepository(clean_db)
+    event = _build_event(post_id="single_001")
+    detection_id = repo.save(event, _build_response(), tier="T1", model_version=_MV)
+    assert detection_id is not None
+    with clean_db.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM agent_runs")
+            assert cur.fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------------------
 # Story 3-5: set_human_label
 # ---------------------------------------------------------------------------
 
@@ -171,7 +253,9 @@ _MV = "openai:gpt-4o:2024-08-06"
 def _save_one(repo: DetectionRepository, post_id: str = "label_001") -> int:
     """detection 1건 저장 후 detections.post_id (FK) 반환 — set_human_label 입력값."""
     event = _build_event(post_id=post_id)
-    detection_id = repo.save(event, _build_response(), tier="T1", model_version=_MV)
+    detection_id = repo.save(
+        event, _build_response(), tier="T1", model_version=_MV
+    )
     assert detection_id is not None
     with repo._pool.connection() as conn:  # noqa: SLF001 — 테스트에서 FK 조회
         with conn.cursor() as cur:

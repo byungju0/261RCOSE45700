@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, call, patch
 
+import httpx
 import pytest
 from openai import APIConnectionError, APITimeoutError
 
@@ -129,6 +130,21 @@ def test_openai_connection_error_treated_as_retryable() -> None:
 
     assert result == "ok"
     assert func.call_count == 2
+
+
+def test_httpx_http_error_treated_as_retryable() -> None:
+    mock_redis = MagicMock()
+    handler = RetryHandler(mock_redis)
+    func = MagicMock(side_effect=[httpx.HTTPError("connection problem"), "ok"])
+
+    with patch("detection.src.retry.retry_handler.time.sleep"):
+        result = handler.execute_with_retry(
+            func, message=_MESSAGE, post_id=_POST_ID, correlation_id=_CID,
+        )
+
+    assert result == "ok"
+    assert func.call_count == 2
+    mock_redis.lpush.assert_not_called()
 
 
 def test_max_attempts_override_zero_means_no_retry() -> None:

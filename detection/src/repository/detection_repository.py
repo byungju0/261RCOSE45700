@@ -1,10 +1,12 @@
-"""Detection Repository — posts UPSERT + detections INSERT 1 트랜잭션 (Story 3-4).
+"""Detection Repository — posts UPSERT + detections INSERT (+ agent_runs) 1 트랜잭션 (Story 3-4 / 3-7).
 
 흐름:
   1. sources(site_name) UPSERT → sources.id 회수
   2. posts(source_id, post_id_at_source) UPSERT → posts.id 회수
   3. detections(post_id, model_version) INSERT — V3 unique constraint으로 멱등성
      - ON CONFLICT (post_id, model_version) DO NOTHING
+  4. (agentic) agent_runs batch INSERT — detections 신규 행일 때만, 동일 트랜잭션 (Story 3-7, V10)
+     - detections 멱등 conflict 시 agent_runs도 skip (detection_id 없음)
 
 본 레포는 write 전용 (`save` 단일 public 메서드). read는 Spring API 레이어 전담.
 """
@@ -17,6 +19,7 @@ from datetime import datetime, timezone
 
 from psycopg_pool import ConnectionPool
 
+from detection.src.agents.contracts import AgentRunTrace
 from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse
 from shared.models.crawl_event import CrawlEvent
 from shared.structured_logger import get_logger
@@ -50,14 +53,20 @@ class DetectionRepository:
         response: LLMResponse,
         tier: str,
         model_version: str,
+        agent_runs: list[AgentRunTrace] | None = None,
     ) -> int | None:
-        """posts + detections 저장. detections.id 반환 (멱등 conflict 시 None).
+        """posts + detections (+ agent_runs) 저장. detections.id 반환 (멱등 conflict 시 None).
 
         한 트랜잭션:
           - sources UPSERT (site_name=event.source_id, board_name=event.site_name)
           - posts UPSERT (source_id, post_id_at_source=event.post_id, body=raw_text, ...)
           - detections INSERT (post_id, tier, type, confidence, ..., model_version)
               ON CONFLICT (post_id, model_version) DO NOTHING
+          - (agent_runs 제공 시) agent_runs batch INSERT — detections 신규 행일 때만, 동일 트랜잭션
+              detections 멱등 skip(conflict) 시 agent_runs도 INSERT 안 함 (Story 3-7)
+
+        Args:
+            agent_runs: agentic 모드의 스테이지 trace 목록. single 모드는 None (하위호환).
 
         Raises:
             psycopg.Error: 연결/SQL 실패. 호출자(RetryHandler 밖)가 catch.
@@ -158,6 +167,34 @@ class DetectionRepository:
                         """,
                         (detection_id, event.correlation_id),
                     )
+
+                    # 4) agent_runs batch INSERT (Story 3-7, V10) — 동일 트랜잭션.
+                    # detections 신규 행(detection_id is not None)일 때만 — 멱등 skip 시 trace도 skip.
+                    if agent_runs:
+                        cur.executemany(
+                            """
+                            INSERT INTO agent_runs (
+                                detection_id, post_id, stage, model, input_tokens,
+                                output_tokens, cost_usd, latency_ms, output, correlation_id, created_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, NOW())
+                            """,
+                            [
+                                (
+                                    detection_id,
+                                    post_id,
+                                    trace.stage,
+                                    trace.model,
+                                    trace.input_tokens,
+                                    trace.output_tokens,
+                                    trace.cost_usd,
+                                    trace.latency_ms,
+                                    json.dumps(trace.output) if trace.output is not None else None,
+                                    event.correlation_id,
+                                )
+                                for trace in agent_runs
+                            ],
+                        )
 
         if detection_id is None:
             _logger.info(

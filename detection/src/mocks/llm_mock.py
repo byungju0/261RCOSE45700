@@ -60,3 +60,37 @@ class LLMMock:
             output_tokens=int(self._data.get("output_tokens", 0)),
             cost_usd=float(self._data.get("cost_usd", 0.0)),
         )
+
+    def run_structured(
+        self,
+        *,
+        system_prompt: str,
+        user_text: str,
+        schema: dict,
+        schema_name: str,
+        model: str,
+    ) -> tuple[dict, int, int, float]:
+        """LLMClient.run_structured 시그니처 호환 — agentic 경로(S1 트리아지) 통합 테스트용.
+
+        fixture의 type/confidence/reason_ko/translated_text_ko + 트리아지 7필드 추가분
+        (game_context/needs_image/needs_link_trace)을 반환한다. timeout/rate_limited 모드는
+        classify와 동일하게 예외를 던져 에이전트 경로의 retry/DLQ를 검증할 수 있다.
+        """
+        self._sleep()
+        if self._mode == "rate_limited":
+            raise RateLimitError(self._data.get("retry_after_seconds", 30))
+        if self._mode == "timeout":
+            raise TimeoutError("LLM API timeout")
+        parsed = {
+            "type": self._data["type"],
+            "confidence": self._data["confidence"],
+            "game_context": self._data.get("game_context", "불명"),
+            "reason_ko": self._data["reason_ko"],
+            "translated_text_ko": self._data.get("translated_text_ko"),
+            "needs_image": bool(self._data.get("needs_image", False)),
+            "needs_link_trace": bool(self._data.get("needs_link_trace", False)),
+        }
+        in_tok = int(self._data.get("input_tokens", 0))
+        out_tok = int(self._data.get("output_tokens", 0))
+        cost = float(self._data.get("cost_usd", 0.0))
+        return parsed, in_tok, out_tok, cost

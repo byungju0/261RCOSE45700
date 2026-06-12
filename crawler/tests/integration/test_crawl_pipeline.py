@@ -234,6 +234,56 @@ async def test_pipeline_individual_failure_continues():
     mock_redis_mq.lpush.assert_not_called()
 
 
+async def test_pipeline_postprocessing_failure_continues_to_next_post():
+    """저장/직렬화/enqueue 등 후처리 실패도 개별 게시글 실패로 격리한다."""
+    crawl_result_1 = _make_crawl_result(_KEYWORD_TEXT)
+    crawl_result_2 = _make_crawl_result(_KEYWORD_TEXT.replace("추천", "정보"))
+    mock_crawler = AsyncMock()
+    mock_crawler.fetch.side_effect = [crawl_result_1, crawl_result_2]
+    mock_crawler.fetch_many = None
+
+    mock_redis_dedup = MagicMock()
+    mock_redis_dedup.sismember.return_value = 0
+    mock_redis_dedup.sadd = MagicMock()
+
+    mock_redis_mq = MagicMock()
+    mock_redis_mq.lpush = MagicMock()
+
+    mock_storage = MagicMock()
+    mock_storage.save.side_effect = [
+        OSError("disk full"),
+        StorageResult(local_path=Path("/tmp/test"), s3_text_path="", s3_image_paths=[]),
+    ]
+
+    pipeline = CrawlPipeline(
+        crawler=mock_crawler,
+        storage=mock_storage,
+        dedup=DedupChecker(mock_redis_dedup),
+        publisher=RedisPublisher(mock_redis_mq),
+    )
+
+    with _isolated_sites(), patch(
+        "crawler.src.scheduler.crawl_scheduler._fetch_post_urls",
+        return_value=ListingResult(
+            urls=[_TEST_URL, _TEST_URL2],
+            discovered_total=2,
+            keyword_matched=0,
+            keyword_unmatched=2,
+            candidates=[
+                PostUrlCandidate(_TEST_URL, "macro loader download", False),
+                PostUrlCandidate(_TEST_URL2, "cheat bypass discord", False),
+            ],
+        ),
+    ):
+        stats = await pipeline.run()
+
+    assert stats.failed == 1
+    assert stats.enqueued == 1
+    assert stats.attempted == 2
+    assert mock_storage.save.call_count == 2
+    mock_redis_mq.lpush.assert_called_once()
+
+
 async def test_pipeline_fetches_details_with_bounded_concurrency():
     """상세 fetch 는 bounded concurrency 로 병렬화하되 전체 후처리는 완료된다."""
     active = 0

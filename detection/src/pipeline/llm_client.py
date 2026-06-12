@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from detection.src.prompts.registry import get_game_overlay, get_type_guidance
+from detection.src.prompts.registry import get_domain_guide, get_type_guidance
 from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse, RateLimitError
 from shared.structured_logger import get_logger
 
@@ -58,23 +58,26 @@ SYSTEM_PROMPT = (
 
 
 def build_system_prompt(source_id: str | None = None) -> str:
-    """조립식 system prompt: 베이스 + 유형 가이드(Stage 2-A) + 게임별 오버레이(Stage 1).
+    """조립식 system prompt: 베이스 + 유형 가이드(Stage 2-A) + 공용 도메인 가이드.
 
-    안정부(베이스 + 유형 가이드)를 앞에 두고 게임별 오버레이를 뒤에 붙여, 모든 호출에 공통인
-    prefix를 키워 OpenAI 프롬프트 캐싱 효율을 높인다. 유형 가이드/오버레이 파일이 없으면
-    베이스(SYSTEM_PROMPT)만 반환 — 동작 중립 fallback.
+    2026-06-11 재정의(Story 3-7, FR12-C): 사이트→게임 라우팅을 제거했다. 게임 맥락은 분류기가
+    본문에서 자가 추론하고, 게임 라벨에 종속되지 않는 은어·오탐 지식은 모든 게시글에 동일하게
+    주입하는 단일 공용 `domain_guide.md`로 제공한다. `source_id`는 더 이상 프롬프트 선택에
+    영향을 주지 않는다 — LLMInterface Protocol 시그니처 호환을 위해 인자만 수용한다.
+
+    안정부(베이스 + 유형 가이드 + 도메인 가이드)는 모든 호출에 공통이므로 OpenAI 프롬프트 캐싱
+    prefix가 최대화된다. 파일이 없으면 베이스(SYSTEM_PROMPT)만 반환 — 동작 중립 fallback.
     """
     parts = [SYSTEM_PROMPT]
     type_guidance = get_type_guidance()
     if type_guidance:
         parts.append(type_guidance)
-    overlay = get_game_overlay(source_id)
-    if overlay:
-        parts.append(overlay)
+    domain_guide = get_domain_guide()
+    if domain_guide:
+        parts.append(domain_guide)
     # Stage 2-B (few-shot 예시 주입) — 빈 슬롯. Story 3-5는 코퍼스 파일
     # (detection/src/prompts/examples/{game_key}.jsonl)과 포맷 계약(examples/README.md)만 준비한다.
     # 실제 예시 선택·삽입·토큰 예산 런타임 관리는 별도 미래 스토리 (deferred-work 참조).
-    # 주입 시에도 베이스 9-type/confidence 루브릭을 재정의하지 않고 예시로 보강만 한다 (오버레이 원칙 동일).
     return "\n\n".join(parts)
 
 
@@ -185,12 +188,15 @@ class LLMClient:
             text_resp = self._call(text, images_payload=[], source_id=source_id)
             image_resp = self._call(text, images_payload=image_blocks, source_id=source_id)
             # 이미지 호출이 image_observed=true이면 우선 적용.
-            merged_type = image_resp.type if image_resp.image_observed else text_resp.type
-            merged_conf = max(text_resp.confidence, image_resp.confidence)
+            use_image = image_resp.image_observed
+            merged_type = image_resp.type if use_image else text_resp.type
+            # confidence는 선택된 브랜치의 값만 사용 — 폐기된 호출의 confidence를 섞으면
+            # 선택 근거와 무관한 confidence가 부풀려진다.
+            merged_conf = image_resp.confidence if use_image else text_resp.confidence
             return LLMResponse(
                 type=merged_type,
                 confidence=merged_conf,
-                reason_ko=image_resp.reason_ko if image_resp.image_observed else text_resp.reason_ko,
+                reason_ko=image_resp.reason_ko if use_image else text_resp.reason_ko,
                 translated_text_ko=text_resp.translated_text_ko or image_resp.translated_text_ko,
                 image_observed=image_resp.image_observed,
                 input_tokens=text_resp.input_tokens + image_resp.input_tokens,
@@ -217,22 +223,41 @@ class LLMClient:
             {"role": "system", "content": build_system_prompt(source_id)},
             {"role": "user", "content": user_content},
         ]
+        resp = self._create_with_retry(
+            messages,
+            schema=CLASSIFICATION_SCHEMA,
+            schema_name="tracker_classification",
+            model=self._model,
+        )
+        return self._parse_response(resp)
 
+    def _create_with_retry(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        schema: dict[str, Any],
+        schema_name: str,
+        model: str,
+    ) -> Any:
+        """OpenAI Chat Completions(json_schema strict) 호출 + 429 Retry-After 1회 재시도.
+
+        분류(5필드)·트리아지(7필드) 등 모든 structured 호출이 공유하는 단일 OpenAI 진입점.
+        timeout/connection 에러는 즉시 propagate(RetryHandler 책임), 그 외 OpenAI 에러는 RuntimeError.
+        """
         for attempt in (1, 2):
             try:
-                resp = self._client.chat.completions.create(
-                    model=self._model,
+                return self._client.chat.completions.create(
+                    model=model,
                     messages=messages,
                     response_format={
                         "type": "json_schema",
                         "json_schema": {
-                            "name": "tracker_classification",
+                            "name": schema_name,
                             "strict": True,
-                            "schema": CLASSIFICATION_SCHEMA,
+                            "schema": schema,
                         },
                     },
                 )
-                return self._parse_response(resp)
             except OpenAIRateLimitError as exc:
                 retry_after = _retry_after_from(exc)
                 if attempt == 1:
@@ -253,7 +278,41 @@ class LLMClient:
                 raise RuntimeError(f"OpenAI 호출 실패: {type(exc).__name__}: {exc}") from exc
 
         # unreachable — 양 분기 모두 return/raise.
-        raise RuntimeError("unreachable: LLMClient._call loop exited without return")
+        raise RuntimeError("unreachable: _create_with_retry loop exited without return")
+
+    def run_structured(
+        self,
+        *,
+        system_prompt: str,
+        user_text: str,
+        schema: dict[str, Any],
+        schema_name: str,
+        model: str,
+    ) -> tuple[dict[str, Any], int, int, float]:
+        """에이전트용 범용 structured 호출 (텍스트 only). (parsed, in_tok, out_tok, cost) 반환.
+
+        S1 트리아지 등 자체 스키마·모델을 쓰는 에이전트가 OpenAI 플러밍(호출·429 재시도·토큰/비용
+        집계)을 재사용하기 위한 진입점 — 신규 OpenAI wrapper 작성 없이 본 클라이언트를 공유한다.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"게시글:\n{user_text}"},
+        ]
+        resp = self._create_with_retry(
+            messages, schema=schema, schema_name=schema_name, model=model
+        )
+        content = resp.choices[0].message.content or "{}"
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"OpenAI 응답 JSON 파싱 실패: {exc}") from exc
+
+        from detection.src.rate_limit.cost_cap import estimate_cost_usd
+        usage = getattr(resp, "usage", None)
+        input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+        output_tokens = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
+        cost = estimate_cost_usd(model, input_tokens, output_tokens)
+        return parsed, input_tokens, output_tokens, cost
 
     def _parse_response(self, resp: Any) -> LLMResponse:
         content = resp.choices[0].message.content or "{}"
@@ -290,13 +349,24 @@ class LLMClient:
 
 
 def _retry_after_from(exc: OpenAIRateLimitError) -> int:
-    """OpenAI RateLimitError에서 Retry-After 헤더 추출. 기본 30s."""
+    """OpenAI RateLimitError에서 Retry-After 추출. 기본 30s.
+
+    OpenAI는 retry-after-ms(밀리초, 비표준)와 retry-after(초, RFC 7231) 두 헤더를 모두 보낼 수 있다.
+    retry-after-ms를 우선 확인하고, 없으면 retry-after를 사용한다. 둘 다 없으면 30s 폴백.
+    """
     response = getattr(exc, "response", None)
     if response is None:
         return 30
     headers = getattr(response, "headers", None) or {}
+    # 밀리초 헤더 우선 (OpenAI SDK 내부 동작과 동일한 우선순위).
+    raw_ms = headers.get("retry-after-ms") or headers.get("Retry-After-Ms")
+    if raw_ms is not None:
+        try:
+            return max(1, int(float(raw_ms) / 1000))
+        except (TypeError, ValueError):
+            pass
     raw = headers.get("Retry-After") or headers.get("retry-after")
     try:
-        return int(raw) if raw is not None else 30
+        return int(float(raw)) if raw is not None else 30
     except (TypeError, ValueError):
         return 30

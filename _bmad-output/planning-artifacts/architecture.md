@@ -574,36 +574,48 @@ tracker/
 │       └── integration/
 │           └── test_crawl_pipeline.py  # 142 PASS 누적 (외부 네트워크 0)
 │
-├── detection/                         # FR11-FR16 + FR16-NEW-1/2/3: AI 탐지 파이프라인 (2026-05-27 PIVOT)
+├── detection/                         # FR11-FR16 + FR16-NEW-1/2/3 + FR12-A/B/C: AI 탐지 파이프라인 (2026-06-11 멀티 에이전트 재정의)
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── .env.example                   # OPENAI_API_KEY, LLM_MODEL, LLM_DAILY_COST_CAP_USD, LLM_WORKER_COUNT
+│   ├── .env.example                   # OPENAI_API_KEY, LLM_MODEL, LLM_DAILY_COST_CAP_USD, LLM_WORKER_COUNT, DETECTION_MODE, AGENT_POST_BUDGET_USD, LINK_TRACE_PROXY
 │   └── src/
 │       ├── main.py
 │       ├── config/
 │       │   ├── redis_config.py        # Redis 연결 설정 (DB0, DB2)
-│       │   └── tier_config.py         # 신규 — Tier별 threshold/retry/notification/retention 매핑
+│       │   └── tier_config.py         # Tier별 threshold/retry/notification/retention 매핑
 │       ├── consumer/
 │       │   ├── queue_consumer.py      # BRPOPLPUSH (DB0), Watchdog
 │       │   └── watchdog.py
-│       ├── pipeline/                  # FR12-FR14
-│       │   ├── llm_classifier.py      # 재작성 (Story 3-3) — OpenAI 멀티모달 단일 호출, Tier 라우팅, reason_ko
-│       │   ├── llm_client.py          # 신규 — OpenAI HTTP 클라이언트, 텍스트/이미지 분리 호출 가능 인터페이스
-│       │   └── tier_router.py         # 신규 — Tier 매핑 + 임계값 적용 + 다중 라벨 시 최상위 Tier 선택
+│       ├── agents/                    # 신규 (2026-06-11) — 비용 차등 멀티 에이전트 (FR12-A/B/C)
+│       │   ├── orchestrator.py        # AgentOrchestrator — 결정론적 escalation 정책 + stage 예산 + trace 수집
+│       │   ├── normalizer.py          # S0 (LLM 없음) — NFKC·zero-width·변형문자 매핑 + markdown 링크 추출
+│       │   ├── triage_agent.py        # S1 (gpt-4o-mini) — 게임 맥락 자가 추론 + 9-type 1차 분류 + 번역 + escalation 신호
+│       │   ├── image_analyst.py       # S2a (gpt-4o) — 핵 UI/배너/연락처 판독 (이미지 有시)
+│       │   ├── link_tracer.py         # S2b — 1-hop httpx fetch + gpt-4o-mini 요약 (유통 경로 추적)
+│       │   ├── link_fetch_guard.py    # SSRF/도메인 정책/바이트 캡 (단위 테스트 격리)
+│       │   ├── synthesizer.py         # S3 (gpt-4o) — 증거 통합 최종 verdict (5필드 스키마 산출)
+│       │   └── contracts.py           # 스테이지 간 dataclass 계약 (TriageResult, LinkEvidence, AgentTrace …)
+│       ├── pipeline/                  # FR12-FR14 — DETECTION_MODE 분기 진입점
+│       │   ├── detection_pipeline.py  # single|agentic 모드 분기 (single=폴백 보존, agentic=orchestrator 호출)
+│       │   ├── llm_classifier.py      # single 모드 분류기 (폴백) — 트리아지/Synthesizer의 모태로 재활용
+│       │   ├── llm_client.py          # OpenAI HTTP 클라이언트 (structured output, 멀티모달, 모든 에이전트 공유)
+│       │   └── tier_router.py         # Tier 매핑 + 임계값 적용 + 다중 라벨 시 최상위 Tier 선택
 │       │   # (제거) translate.py — VARCO Translation 폐기 (2026-05-27 PIVOT)
+│       │   # (제거) SOURCE_ID_TO_GAME 라우팅 — 게임 맥락 자가 추론으로 대체 (2026-06-11, FR12-C)
+│       │   # (병합) prompts/games/*.md 7종 → prompts/domain_guide.md 단일 공용 가이드 (게임 라벨 없는 은어·오탐 규칙, 트리아지에 항상 주입)
 │       ├── rate_limit/                # FR16
 │       │   ├── token_bucket.py        # Redis DB2 (REDIS_RATELIMIT_DB) — Story 3-2 코드 부품 재사용
 │       │   └── cost_cap.py            # 신규 — 일일 비용(USD) 추적 + cap 도달 시 Hold
 │       ├── retry/                     # FR15, NFR11
 │       │   └── retry_handler.py       # Tier별 차등 retry 정책 적용 (Story 3-3 재작성 코드 부품 재사용)
-│       ├── notification/              # 신규 — FR16-NEW-2 (Story 3-6)
-│       │   ├── t1_notifier.py         # T1 Critical 즉시 알림 (채널은 운영팀 협의 후 확정)
-│       │   ├── digest_scheduler.py    # T2 일일 다이제스트
-│       │   └── weekly_report.py       # T3 주간 리포트
-│       ├── retention/                 # 신규 — FR16-NEW-3 (Story 3-6)
-│       │   └── tier_retention_job.py  # T2·T3 90일 후 archive / T4 즉시 폐기
-│       ├── storage/
-│       │   └── detection_repository.py # RDS write 전용 (read는 API 전담), Tier 필드 포함
+│       # (정정 2026-06-11) 알림 발송 로직은 detection이 아니라 백엔드(api/)에 구현됨 —
+│       #   detection은 detections 저장 시 notification_events(PENDING)만 적재(아웃박스 패턴).
+│       #   발송은 api/.../notification/NotificationEventProcessor(5초 폴링) + 채널 어댑터 6종.
+│       #   따라서 detection/src/notification/·retention/ 는 미구현(가짜 트리였음, 제거).
+│       #   FR16-NEW-2 T1 알림 = 기존 백엔드 시스템 + minTier=T1 룰로 충족 (신규 코드 0).
+│       #   사람 리뷰 큐 / T2·T3 다이제스트 / 90일 retention(FR16-NEW-3)은 deferred-work 이월.
+│       ├── repository/
+│       │   └── detection_repository.py # RDS write 전용 (read는 API 전담), Tier 필드 + agent_runs(V10) 트랜잭션 확장 + notification_events(PENDING) 적재
 │       └── mocks/                     # 통합 테스트 + stub
 │           └── llm_mock.py            # 2026-05-27 PIVOT — varco_mock.py 대체, OpenAI multimodal response 시뮬레이션 + 이미지 토큰 단가 mock
 │   └── tests/
@@ -774,7 +786,8 @@ tracker/
 | Redis DB1 `posts:dedup` | Crawler | Crawler |
 | Redis DB2 `llm:rate_limit` | Detection | Detection (2026-05-27 PIVOT — varco: → llm:) |
 | Redis DB3 `cache:detections` | API | API |
-| RDS `detections` 테이블 | Detection (write) | API (read) |
+| RDS `detections` 테이블 | Detection (write) | API (read) — **계약 불변 (2026-06-11): 멀티 에이전트도 동일 5필드 스키마로 저장, Epic 4 대시보드 무영향** |
+| RDS `agent_runs` 테이블 | Detection (write) | — (신규 V10, 2026-06-11; 스테이지별 trace/비용, 대시보드 미참조) |
 | S3 | Crawler (write) | Detection (read, 원본 필요 시) |
 
 ### 데이터 흐름
@@ -790,10 +803,17 @@ crawler/src/crawl4ai_crawler.py 본문 fetch (crawl4ai PruningContentFilter)
 crawler/src/preprocessor/ (language_detector → dedup_checker(SHA-256, Redis DB1) → content_validator(8-kind 품질 가드, real만 통과) → serializer)
   ↓ [Redis posts:queue DB0 LPUSH, 페이로드: crawl_event.py 스키마]
 detection/src/consumer/queue_consumer.py (BRPOPLPUSH)
-  ↓ [OpenAI 멀티모달 LLM 단일 호출 — 텍스트+이미지+다국어 통합, 분류·reason_ko·translated_text_ko 동시 산출]
-  ↓ [Tier 라우팅 — T1/T2/T3/T4 + 임계값 적용]
-  ↓ [Redis DB2 토큰 버킷 체크]
-detection/src/storage/detection_repository.py → RDS detections (write)
+  ↓ [DETECTION_MODE=agentic — detection/src/agents/orchestrator.py 결정론적 5단 파이프라인]
+  ↓   S0 normalizer.py     : NFKC·변형문자 정규화 + markdown 링크 추출 ($0)
+  ↓   S1 triage_agent.py   : gpt-4o-mini 1차 분류 + 게임 맥락 자가 추론 + 번역 + escalation 신호 (전 게시글)
+  ↓   ├─ FAST PATH (기타∧conf≥0.80∧의심링크 없음) → 트리아지 결과가 최종 verdict
+  ↓   └─ ESCALATE:
+  ↓        S2a image_analyst.py : gpt-4o 이미지 판독 (이미지 有시)   ┐ 병렬
+  ↓        S2b link_tracer.py   : 1-hop httpx fetch + SSRF 가드 + 캐시 ┘ (link_fetch_guard.py)
+  ↓        S3 synthesizer.py    : gpt-4o 증거 통합 → 5필드 verdict
+  ↓ [Tier 라우팅 — T1/T2/T3/T4 + 임계값 적용]  ← single 모드(폴백)는 llm_classifier.py 단일 호출
+  ↓ [Redis DB2 토큰 버킷 체크 + 게시글당 예산 가드(AGENT_POST_BUDGET_USD)]
+detection/src/repository/detection_repository.py → RDS detections (write) + agent_runs (스테이지 trace, V10)
   ↓
 api/.../DetectionController.java → RDS detections (read)
   ↓ [JSON camelCase + X-Correlation-ID]

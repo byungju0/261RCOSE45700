@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
 import threading
 
+from detection.src.agents.link_tracer import LinkTracer
+from detection.src.agents.orchestrator import AgentOrchestrator
+from detection.src.agents.triage_agent import TriageAgent
 from detection.src.config.db_config import get_pool
 from detection.src.config.redis_config import get_mq_client, get_rate_limit_client
 from detection.src.consumer.queue_consumer import QueueConsumer
@@ -25,6 +29,8 @@ def main() -> None:
     rate_limit_client = get_rate_limit_client()
     db_pool = get_pool()
 
+    detection_mode = os.environ.get("DETECTION_MODE", "single").strip().lower()
+
     llm_client = LLMClient()
     classify_bucket = TokenBucket(
         rate_limit_client, key=REDIS_KEY_LLM_RATE_LIMIT_CLASSIFY,
@@ -34,8 +40,20 @@ def main() -> None:
     tier_router = TierRouter()
     retry_handler = RetryHandler(mq_client)
     repository = DetectionRepository(db_pool)
+
+    # agentic 모드: S1 트리아지 + S2b 링크 추적 오케스트레이터 구성 (Story 3-7).
+    # 링크 캐시는 Redis dedup DB(DB1)를 사용 — rate-limit DB와 분리.
+    orchestrator = None
+    if detection_mode == "agentic":
+        from detection.src.config.redis_config import get_dedup_client
+        dedup_client = get_dedup_client()
+        triage_agent = TriageAgent(llm_client)
+        link_tracer = LinkTracer(dedup_client)
+        orchestrator = AgentOrchestrator(triage_agent, link_tracer)
+
     pipeline = DetectionPipeline(
-        classifier, tier_router, cost_cap, retry_handler, repository=repository,
+        classifier, tier_router, cost_cap, retry_handler,
+        repository=repository, orchestrator=orchestrator, mode=detection_mode,
     )
 
     watchdog = Watchdog(mq_client)

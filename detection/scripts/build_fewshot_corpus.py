@@ -2,7 +2,7 @@
 
 `human_label IS NOT NULL`인 detections를 **game_key × type(=human_label)별로 그룹화**하여,
 그룹당 최대 N건(confidence 높은 순)을 골라 `detection/src/prompts/examples/{game_key}.jsonl`로
-export한다. game_key 매핑은 `registry.SOURCE_ID_TO_GAME` 재사용.
+export한다. game_key 매핑은 `label_detections.SOURCE_ID_TO_GAME` 재사용.
 
 **경계 (본 스토리에서 하지 않는 것):** 생성된 코퍼스를 `build_system_prompt()` Stage 2-B에 실제
 주입하는 로직과 정확도 효과 측정은 별도 미래 스토리. 본 스크립트는 코퍼스 파일 생성까지만.
@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from detection.src.prompts.registry import SOURCE_ID_TO_GAME  # noqa: E402
+from detection.scripts.label_detections import SOURCE_ID_TO_GAME  # noqa: E402
 
 # 코퍼스 출력 디렉터리.
 EXAMPLES_DIR = PROJECT_ROOT / "detection" / "src" / "prompts" / "examples"
