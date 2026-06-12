@@ -98,9 +98,9 @@ function TriageDetail({ output }: { output: Record<string, unknown> }) {
     <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
       <span>분류: <span className="text-foreground font-medium">{String(output.type ?? '-')}</span></span>
       <span>신뢰도: <span className="text-foreground font-mono">{typeof output.confidence === 'number' ? (output.confidence * 100).toFixed(0) : '-'}%</span></span>
-      {output.needs_link_trace && <span className="text-amber-600 font-medium">링크추적 요청</span>}
-      {output.needs_image && <span className="text-amber-600 font-medium">이미지분석 요청</span>}
-      {output.game_context && (
+      {Boolean(output.needs_link_trace) && <span className="text-amber-600 font-medium">링크추적 요청</span>}
+      {Boolean(output.needs_image) && <span className="text-amber-600 font-medium">이미지분석 요청</span>}
+      {Boolean(output.game_context) && (
         <span className="w-full">게임 컨텍스트: <span className="text-foreground">{String(output.game_context)}</span></span>
       )}
     </div>
