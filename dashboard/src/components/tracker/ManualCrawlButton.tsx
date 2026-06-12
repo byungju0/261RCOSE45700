@@ -119,11 +119,7 @@ export function ManualCrawlButton() {
     if (loggedJobIdRef.current === jobId) return;
     loggedJobIdRef.current = jobId;
 
-    if (jobStatusStatus === 'succeeded') {
-      logActivity({ eventType: 'MANUAL_CRAWL_COMPLETED', message: '수동 크롤링 완료' });
-    } else if (jobStatusStatus === 'failed') {
-      logActivity({ eventType: 'MANUAL_CRAWL_FAILED', message: '수동 크롤링 실패' });
-    } else if (jobStatusStatus === 'skipped') {
+    if (jobStatusStatus === 'skipped') {
       logActivity({ eventType: 'MANUAL_CRAWL_SKIPPED', message: '수동 크롤링 스킵 — 이미 실행 중' });
     }
   }, [isTerminal, jobStatusStatus, jobId, logActivity]);

@@ -1208,7 +1208,10 @@ class CrawlScheduler:
                 trigger = "수동" if job_id else "스케줄"
                 activity = (
                     "CRAWL_COMPLETED",
-                    f"{trigger} 크롤링 완료 — 큐 {stats.enqueued}건 / 시도 {stats.attempted}건",
+                    f"{trigger} 크롤링 완료 — 선택 {stats.listing_urls_selected}건"
+                    f" / URL중복 {stats.skipped_seen_url}건"
+                    f" / 본문 fetch {stats.attempted}건"
+                    f" / 큐 {stats.enqueued}건",
                 )
             except Exception as exc:
                 if job_id:

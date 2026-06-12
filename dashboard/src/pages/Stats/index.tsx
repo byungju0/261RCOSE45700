@@ -146,7 +146,7 @@ export function StatsPage() {
             value={crawlStats.listingUrlsSelected}
             sub={`P2 ${crawlStats.selectedP2} · P3 ${crawlStats.selectedP3}`}
           />
-          <FunnelStat label="시도" value={crawlStats.attempted} />
+          <FunnelStat label="본문 fetch" value={crawlStats.attempted} />
           <FunnelStat label="큐 적재" value={crawlStats.enqueued} highlight />
           <FunnelStat label="URL중복" value={crawlStats.skippedSeenUrl} muted />
           <FunnelStat label="본문중복" value={crawlStats.skippedDedup} muted />

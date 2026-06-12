@@ -87,9 +87,12 @@ function sourceStatus(lastCrawledAt: string | null): { label: string; color: str
 }
 
 const ACTIVITY_META: Record<string, { variant: ActivityVariant; tag?: string }> = {
+  CRAWL_COMPLETED: { variant: 'ok' },
+  CRAWL_FAILED:    { variant: 'default' },
   MANUAL_CRAWL_TRIGGERED: { variant: 'self', tag: '나' },
   MANUAL_CRAWL_COMPLETED: { variant: 'ok', tag: '나' },
   MANUAL_CRAWL_FAILED:    { variant: 'default', tag: '나' },
+  MANUAL_CRAWL_SKIPPED:   { variant: 'self', tag: '나' },
 };
 
 function formatDelta(delta: number): string {
