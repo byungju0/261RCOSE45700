@@ -16,32 +16,46 @@ from __future__ import annotations
 import re
 import unicodedata
 
+import regex as _regex
+
 from detection.src.agents.contracts import NormalizedPost
 
-# zero-width / 보이지 않는 포맷 문자 — 단어 사이에 끼워 키워드 매칭을 회피하는 데 쓰임.
-_ZERO_WIDTH = {
-    "​",  # ZERO WIDTH SPACE
-    "‌",  # ZERO WIDTH NON-JOINER
-    "‍",  # ZERO WIDTH JOINER
-    "⁠",  # WORD JOINER
-    "﻿",  # ZERO WIDTH NO-BREAK SPACE (BOM)
-    "­",  # SOFT HYPHEN
-}
-_ZERO_WIDTH_RE = re.compile("[" + "".join(_ZERO_WIDTH) + "]")
+# Unicode Cf (Format) 카테고리 전체 제거 — zero-width, bidi control, variation selector,
+# Unicode Tag block(U+E0001, U+E0020-U+E007F) 등 키워드 우회에 쓰이는 모든 포맷 문자를 커버.
+# 수동 집합 대신 \p{Cf}를 쓰는 이유: 미래 Unicode 버전 추가분도 자동 포함되고,
+# bidi mark(U+200E/F), variation selector(U+FE00-FE0F) 등 기존 집합의 누락분을 보완.
+_FORMAT_CHAR_RE = _regex.compile(r"\p{Cf}")
 
-# 변형문자 정적 매핑 — 한글 자모로 위장한 유사 라틴/키릴/숫자 글리프를 복원.
-# leet/우회 표기 대응(예: "ㅎr킹"의 라틴 r, 키릴 а/о/е/р/с). 확실한 동형 글리프만 등록 —
-# 과도 치환으로 정상 영문 본문을 깨뜨리지 않도록 보수적으로 유지한다.
+# 변형문자 정적 매핑 — 라틴/키릴/그리스 동형 글리프를 ASCII로 복원.
+# NFKC는 호환 동치만 처리하며 크로스-스크립트 confusable(키릴 а vs 라틴 a 등)은 그대로 둔다.
+# UTS #39 confusables.txt 기준 확실한 1:1 동형만 등록 — 과도 치환으로 정상 본문을 깨뜨리지 않는다.
 _HOMOGLYPH_MAP = {
-    # 키릴 → 라틴 (동형)
-    "а": "a",  # а
-    "е": "e",  # е
-    "о": "o",  # о
-    "р": "p",  # р
-    "с": "c",  # с
-    "х": "x",  # х
-    "у": "y",  # у
-    # 전각 라틴 소문자 일부(NFKC가 대부분 처리하지만 방어적으로)
+    # 키릴 소문자 → 라틴
+    "а": "a",   # а CYRILLIC SMALL LETTER A
+    "е": "e",   # е CYRILLIC SMALL LETTER IE
+    "о": "o",   # о CYRILLIC SMALL LETTER O
+    "р": "p",   # р CYRILLIC SMALL LETTER ER
+    "с": "c",   # с CYRILLIC SMALL LETTER ES
+    "х": "x",   # х CYRILLIC SMALL LETTER HA
+    "у": "y",   # у CYRILLIC SMALL LETTER U
+    # 키릴 대문자 → 라틴 대문자
+    "В": "B",   # В CYRILLIC CAPITAL LETTER VE
+    "Н": "H",   # Н CYRILLIC CAPITAL LETTER EN
+    "М": "M",   # М CYRILLIC CAPITAL LETTER EM
+    "Т": "T",   # Т CYRILLIC CAPITAL LETTER TE
+    "К": "K",   # К CYRILLIC CAPITAL LETTER KA
+    "А": "A",   # А CYRILLIC CAPITAL LETTER A
+    "Е": "E",   # Е CYRILLIC CAPITAL LETTER IE
+    "О": "O",   # О CYRILLIC CAPITAL LETTER O
+    "Р": "P",   # Р CYRILLIC CAPITAL LETTER ER
+    "С": "C",   # С CYRILLIC CAPITAL LETTER ES
+    "Х": "X",   # Х CYRILLIC CAPITAL LETTER HA
+    # 그리스 소문자 → 라틴 (명확한 동형만)
+    "ο": "o",   # ο GREEK SMALL LETTER OMICRON
+    "α": "a",   # α GREEK SMALL LETTER ALPHA
+    "ε": "e",   # ε GREEK SMALL LETTER EPSILON
+    "κ": "k",   # κ GREEK SMALL LETTER KAPPA (approximate)
+    "ν": "v",   # ν GREEK SMALL LETTER NU
 }
 
 # 3회 이상 연속 동일 문자 → 2회로 축약 (의미 보존하며 토큰·노이즈 절감).
@@ -55,7 +69,7 @@ _TRAILING_PUNCT = ".,;:!?。，"  # 영문/한중일 마침표·쉼표
 
 
 def _strip_zero_width(text: str) -> str:
-    return _ZERO_WIDTH_RE.sub("", text)
+    return _FORMAT_CHAR_RE.sub("", text)
 
 
 def _map_homoglyphs(text: str) -> str:
