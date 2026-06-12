@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type {
+  AgentRun,
   CrawlJobStatusResponse,
   CrawlPipelineStatsResponse,
   CrawlTriggerResponse,
@@ -87,6 +88,74 @@ export const handlers = [
       totalElements,
     };
     return HttpResponse.json(response);
+  }),
+
+  // GET /detections/:id/agent-runs — agentic 파이프라인 추적 (짝수 id는 agentic, 홀수는 single)
+  http.get(`${baseUrl}/detections/:id/agent-runs`, ({ params }) => {
+    const id = Number(params.id);
+    if (id % 2 !== 0) return HttpResponse.json([]);
+
+    const runs: AgentRun[] = [
+      {
+        id: id * 10 + 1,
+        stage: 'normalize',
+        model: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: 12,
+        output: {
+          links: ['https://short.url/abc123', 'https://t.me/hacktools'],
+          removed_char_count: 3,
+        },
+      },
+      {
+        id: id * 10 + 2,
+        stage: 'triage',
+        model: 'gpt-4o-mini',
+        inputTokens: 312,
+        outputTokens: 48,
+        costUsd: 0.000095,
+        latencyMs: 820,
+        output: {
+          type: '핵_치트',
+          confidence: 0.91,
+          game_context: '배틀그라운드',
+          needs_image: false,
+          needs_link_trace: true,
+        },
+      },
+      {
+        id: id * 10 + 3,
+        stage: 'link_trace',
+        model: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: 1340,
+        output: {
+          links: [
+            {
+              url: 'https://short.url/abc123',
+              kind: 'web',
+              fetch_status: 'ok',
+              page_title: 'Free PUBG Hack Download — No Ban Guaranteed',
+              is_distribution_site: true,
+              indicators: ['hack download', 'no ban', 'crack', '무료 다운로드'],
+            },
+            {
+              url: 'https://t.me/hacktools',
+              kind: 'messenger',
+              fetch_status: 'skipped:messenger',
+              page_title: null,
+              is_distribution_site: false,
+              indicators: [],
+            },
+          ],
+        },
+      },
+    ];
+    return HttpResponse.json(runs);
   }),
 
   // GET /detections/:id
