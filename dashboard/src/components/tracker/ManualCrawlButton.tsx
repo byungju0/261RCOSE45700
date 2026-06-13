@@ -15,7 +15,6 @@ import {
   useCrawlJobStatusQuery,
   useCrawlTriggerMutation,
 } from '@/api/detections';
-import { ProblemDetailError } from '@/api/client';
 import { useLogActivityMutation } from '@/api/activity';
 import { Kbd } from '@/components/ui/kbd';
 import { useShortcut } from '@/lib/shortcuts';
@@ -71,13 +70,6 @@ export function ManualCrawlButton() {
       : null;
 
   useShortcut('g+t', () => setOpen(true));
-
-  useEffect(() => {
-    const err = jobStatusQuery.error;
-    if (err instanceof ProblemDetailError && err.status === 404) {
-      persistJobId(null);
-    }
-  }, [jobStatusQuery.error, persistJobId]);
 
   useEffect(() => {
     if (!isTerminal || !jobStatusStatus || !jobId) return;

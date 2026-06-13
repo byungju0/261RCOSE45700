@@ -6,7 +6,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query';
-import { apiClient, ProblemDetailError } from './client';
+import { apiClient } from './client';
 import { POLLING_QUERY_OPTIONS } from './queryDefaults';
 import { statsQueries } from './stats';
 import { detectionFilterToParams } from '@/lib/detectionFilter';
@@ -91,10 +91,33 @@ async function triggerCrawl(): Promise<CrawlTriggerResponse> {
 }
 
 async function fetchCrawlJobStatus(jobId: string): Promise<CrawlJobStatusResponse> {
-  const response = await apiClient.get<CrawlJobStatusResponse>(
-    `/crawl/jobs/${jobId}`,
-  );
-  return response.data;
+  try {
+    const response = await apiClient.get<CrawlJobStatusResponse>(
+      `/crawl/jobs/${jobId}`,
+    );
+    return response.data;
+  } catch (err) {
+    // 배포로 컨테이너가 교체되면 Redis TTL 전에 job key가 사라질 수 있음.
+    // 404를 throwing하면 useEffect에서 setState를 불러야 하는 패턴이 생기므로
+    // failed 상태로 변환해 기존 terminal 처리 흐름(3초 후 jobId 초기화)을 재사용.
+    if (err instanceof ProblemDetailError && err.status === 404) {
+      return {
+        jobId,
+        status: 'failed',
+        totalSites: 0,
+        completedSites: 0,
+        percent: 0,
+        currentSite: '',
+        message: '컨테이너 재시작으로 중단됨',
+        failedSites: [],
+        requestedAt: '',
+        startedAt: '',
+        updatedAt: '',
+        finishedAt: '',
+      };
+    }
+    throw err;
+  }
 }
 
 export function useCrawlTriggerMutation() {
@@ -116,10 +139,6 @@ export function useCrawlJobStatusQuery(jobId: string | null) {
     enabled: Boolean(jobId),
     refetchInterval: 2_000,
     staleTime: 1_000,
-    retry: (failureCount, error) => {
-      if (error instanceof ProblemDetailError && error.status === 404) return false;
-      return failureCount < 3;
-    },
   });
 }
 
