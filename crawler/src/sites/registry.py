@@ -75,6 +75,15 @@ def _nga_post_id(url: str) -> str:
     return m.group(1)  # tid 만 — 도메인은 site_id 로 구분
 
 
+def _tor_proxy() -> dict | None:
+    """Tor SOCKS5 proxy — AWS IP 차단 사이트 우회. tor 컨테이너 미기동 시 None."""
+    host = os.environ.get("TOR_PROXY_HOST", "tor")
+    port = os.environ.get("TOR_PROXY_PORT", "9150")
+    if os.environ.get("TOR_PROXY_DISABLED", "").lower() in ("1", "true"):
+        return None
+    return {"server": f"socks5://{host}:{port}"}
+
+
 def _brightdata_cn_proxy() -> dict | None:
     """Bright Data residential proxy (CN zone).
 
@@ -266,8 +275,9 @@ def _make_bahamut_nc_site(name_zh: str, bsn: int) -> SiteConfig:
         page_timeout=35_000,
         max_pages=3,
         page_url_template=f"https://forum.gamer.com.tw/B.php?bsn={bsn}&page={{page}}",
+        proxy=_tor_proxy(),
         enabled=True,
-        note=f"NC 게임 {name_zh} 전용 보드 (bsn={bsn}) — 100% NC 관련.",
+        note=f"NC 게임 {name_zh} 전용 보드 (bsn={bsn}) — Tor proxy로 AWS IP 차단 우회.",
     )
 
 
