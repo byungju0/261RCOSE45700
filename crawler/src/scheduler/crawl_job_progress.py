@@ -10,6 +10,7 @@ from shared.config.redis_config import (
     REDIS_KEY_CRAWL_JOB_PREFIX,
     REDIS_KEY_CRAWL_SOURCE_RUN_PREFIX,
     REDIS_KEY_CRAWL_STATS_LATEST,
+    REDIS_KEY_CRAWLER_RUNNING,
 )
 
 _JOB_TTL_SECONDS = 6 * 60 * 60
@@ -141,6 +142,35 @@ class CrawlJobProgressStore:
             json.dumps(data),
             ex=_JOB_TTL_SECONDS * 7,
         )
+
+    def set_running(self) -> None:
+        """크롤링 시작 시 호출. deploy.yml 사전 drain 체크에서 이 key를 폴링한다."""
+        self._redis.set(REDIS_KEY_CRAWLER_RUNNING, "1", ex=3600)
+
+    def clear_running(self) -> None:
+        self._redis.delete(REDIS_KEY_CRAWLER_RUNNING)
+
+    def cleanup_orphaned_jobs(self) -> int:
+        """컨테이너 재시작 전에 running/queued 상태로 남은 job을 failed로 마킹.
+
+        정상 종료 시에는 mark_succeeded/mark_failed가 먼저 호출되므로 idempotent.
+        """
+        count = 0
+        now = _now()
+        for key in self._redis.scan_iter(f"{REDIS_KEY_CRAWL_JOB_PREFIX}*"):
+            status = self._redis.hget(key, "status")
+            if status in ("running", "queued"):
+                self._redis.hset(
+                    key,
+                    mapping={
+                        "status": "failed",
+                        "message": "컨테이너 재시작으로 중단됨",
+                        "updatedAt": now,
+                        "finishedAt": now,
+                    },
+                )
+                count += 1
+        return count
 
     def _update(self, job_id: str, **fields: str) -> None:
         if not job_id:

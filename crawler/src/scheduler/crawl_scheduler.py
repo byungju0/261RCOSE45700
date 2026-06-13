@@ -198,7 +198,6 @@ class CrawlOptions:
     wait_until: str | None = None
     simulate_user: bool = False
     override_navigator: bool = False
-    user_agent: str | None = None
     user_agent_mode: str | None = None
     c4a_script: list[str] | None = None
     exclude_social_media_links: bool = True
@@ -207,49 +206,6 @@ class CrawlOptions:
     css_selector: str | None = None
     image_filter: Callable[[dict], bool] | None = None
     post_id_extractor: Callable[[str], str] | None = None
-    use_flaresolverr: bool = False
-
-    def with_flaresolverr_solution(
-        self,
-        *,
-        cookies: list[dict] | None,
-        user_agent: str | None,
-    ) -> "CrawlOptions":
-        """Carry FlareSolverr's clearance cookies into detail fetches.
-
-        Cloudflare binds clearance to browser identity signals. Reusing the
-        cookies without the solver browser's User-Agent often re-triggers the
-        challenge, so keep them as a pair.
-        """
-        if not cookies and not user_agent:
-            return self
-
-        return CrawlOptions(
-            cookies=cookies or self.cookies,
-            wait_for=self.wait_for,
-            headers=self.headers,
-            page_timeout=self.page_timeout,
-            proxy=self.proxy,
-            max_retries=self.max_retries,
-            js_code=self.js_code,
-            delay_before_return_html=self.delay_before_return_html,
-            scan_full_page=self.scan_full_page,
-            scroll_delay=self.scroll_delay,
-            virtual_scroll_config=self.virtual_scroll_config,
-            wait_until=self.wait_until,
-            simulate_user=self.simulate_user,
-            override_navigator=self.override_navigator,
-            user_agent=user_agent or self.user_agent,
-            user_agent_mode=self.user_agent_mode,
-            c4a_script=self.c4a_script,
-            exclude_social_media_links=self.exclude_social_media_links,
-            exclude_external_links=self.exclude_external_links,
-            title_keywords=self.title_keywords,
-            css_selector=self.css_selector,
-            image_filter=self.image_filter,
-            post_id_extractor=self.post_id_extractor,
-            use_flaresolverr=self.use_flaresolverr,
-        )
 
     @classmethod
     def from_site(cls, site: SiteConfig) -> "CrawlOptions":
@@ -268,7 +224,6 @@ class CrawlOptions:
             wait_until=site.wait_until,
             simulate_user=site.simulate_user,
             override_navigator=site.override_navigator,
-            user_agent=None,
             user_agent_mode=site.user_agent_mode,
             c4a_script=site.c4a_script,
             exclude_social_media_links=site.exclude_social_media_links,
@@ -277,15 +232,12 @@ class CrawlOptions:
             css_selector=site.css_selector,
             image_filter=site.image_filter,
             post_id_extractor=site.post_id_extractor,
-            use_flaresolverr=site.use_flaresolverr,
         )
 
     def browser_kwargs(self) -> dict:
         kwargs: dict = dict(headless=True, enable_stealth=True, verbose=False)
         if self.headers is not None:
             kwargs["headers"] = self.headers
-        if self.user_agent is not None:
-            kwargs["user_agent"] = self.user_agent
         if self.user_agent_mode is not None:
             kwargs["user_agent_mode"] = self.user_agent_mode
         return kwargs
@@ -349,7 +301,6 @@ class CrawlOptions:
             "wait_until": self.wait_until,
             "simulate_user": self.simulate_user,
             "override_navigator": self.override_navigator,
-            "user_agent": self.user_agent,
             "user_agent_mode": self.user_agent_mode,
             "c4a_script": self.c4a_script,
             "exclude_social_media_links": self.exclude_social_media_links,
@@ -373,8 +324,6 @@ class ListingResult:
     keyword_unmatched: int
     candidates: list[PostUrlCandidate] = field(default_factory=list)
     next_board_url: str | None = None
-    flaresolverr_cookies: list[dict] | None = None
-    flaresolverr_user_agent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -543,106 +492,6 @@ def _select_detail_candidates(
     return selected[:limit]
 
 
-_FLARESOLVERR_HOST = os.environ.get("FLARESOLVERR_HOST", "flaresolverr")
-_FLARESOLVERR_PORT = os.environ.get("FLARESOLVERR_PORT", "8191")
-
-
-def _parse_links_from_flaresolverr_html(html: str) -> list[dict]:
-    """FlareSolverr가 반환한 HTML에서 링크 목록 추출.
-
-    JSON-LD SocialMediaPosting 우선 파싱. 없으면 <a href> fallback.
-    """
-    links: list[dict] = []
-    for match in re.finditer(
-        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-        html,
-        re.DOTALL | re.IGNORECASE,
-    ):
-        try:
-            data = json.loads(match.group(1))
-            if data.get("@type") == "SocialMediaPosting" and data.get("url"):
-                headline = data.get("headline", "")
-                links.append({"href": data["url"], "title": headline, "text": headline})
-        except (json.JSONDecodeError, AttributeError, KeyError):
-            continue
-    if links:
-        return links
-    for match in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\']', html, re.IGNORECASE):
-        href = match.group(1)
-        if href:
-            links.append({"href": href, "title": "", "text": ""})
-    return links
-
-
-async def _fetch_post_urls_via_flaresolverr(
-    board_url: str,
-    pattern: str,
-    limit: int,
-    *,
-    correlation_id: str = "",
-    options: CrawlOptions,
-) -> ListingResult:
-    """FlareSolverr로 Cloudflare Bot Management를 우회하여 listing URL 추출."""
-    endpoint = f"http://{_FLARESOLVERR_HOST}:{_FLARESOLVERR_PORT}/v1"
-    payload: dict = {
-        "cmd": "request.get",
-        "url": board_url,
-        "maxTimeout": 60000,
-    }
-    if options.proxy is not None:
-        proxy_server = (
-            options.proxy.get("server")
-            if isinstance(options.proxy, dict)
-            else str(options.proxy)
-        )
-        payload["proxy"] = {"url": proxy_server}
-    try:
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.post(endpoint, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as exc:
-        _logger.warning(
-            "FlareSolverr 요청 실패: %s — %s", board_url, exc,
-            extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
-        )
-        return ListingResult(urls=[], discovered_total=0, keyword_matched=0, keyword_unmatched=0)
-
-    if data.get("status") != "ok":
-        _logger.warning(
-            "FlareSolverr 응답 오류: %s — %s", board_url, data.get("message", ""),
-            extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
-        )
-        return ListingResult(urls=[], discovered_total=0, keyword_matched=0, keyword_unmatched=0)
-
-    solution = data.get("solution") or {}
-    html = solution.get("response") or ""
-    links = _parse_links_from_flaresolverr_html(html)
-    candidates = _extract_post_url_candidates(
-        links,
-        pattern,
-        title_keywords=options.title_keywords,
-        post_id_extractor=options.post_id_extractor,
-    )
-    selected = candidates[:limit]
-    matched = sum(1 for c in candidates if c.keyword_matched)
-    unmatched = len(candidates) - matched
-    _logger.info(
-        "FlareSolverr listing: board=%s total=%d selected=%d keyword_matched=%d",
-        board_url, len(candidates), len(selected), matched,
-        extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
-    )
-    return ListingResult(
-        urls=[c.url for c in selected],
-        discovered_total=len(candidates),
-        keyword_matched=matched,
-        keyword_unmatched=unmatched,
-        candidates=candidates,
-        flaresolverr_cookies=solution.get("cookies") or None,
-        flaresolverr_user_agent=solution.get("userAgent") or None,
-    )
-
-
 async def _fetch_post_urls(
     board_url: str,
     pattern: str,
@@ -657,13 +506,6 @@ async def _fetch_post_urls(
     사이트별 옵션(cookies/wait_for/headers/proxy)으로 PTT over18·
     Tieba 프록시 등 접근 제어를 통과한다.
     """
-    if options.use_flaresolverr:
-        return await _fetch_post_urls_via_flaresolverr(
-            board_url, pattern, limit,
-            correlation_id=correlation_id,
-            options=options,
-        )
-
     cfg = BrowserConfig(**options.browser_kwargs())
     run = CrawlerRunConfig(**options.listing_run_kwargs())
     arun_kwargs = options.arun_kwargs(board_url, run)
@@ -1094,10 +936,6 @@ class CrawlPipeline:
             options=options,
             prev_page_link_text=site.prev_page_link_text,
         )
-        detail_options = options.with_flaresolverr_solution(
-            cookies=listing.flaresolverr_cookies,
-            user_agent=listing.flaresolverr_user_agent,
-        )
         selected_candidates = _select_detail_candidates(
             site_id=site_id,
             board_url=board_url,
@@ -1138,7 +976,7 @@ class CrawlPipeline:
             site_id=site_id,
             site=site,
             candidates=selected_candidates,
-            options=detail_options,
+            options=options,
         )
         return listing.next_board_url
 
@@ -1556,6 +1394,7 @@ class CrawlScheduler:
         activity: tuple[str, str] | None = None
         exc_to_reraise: Exception | None = None
         async with self._run_lock:
+            await asyncio.to_thread(self._progress_store.set_running)
             try:
                 stats = await self._pipeline.run(job_id=job_id)
                 if job_id:
@@ -1574,6 +1413,8 @@ class CrawlScheduler:
                     self._progress_store.mark_failed(job_id, message=str(exc))
                 activity = ("CRAWL_FAILED", f"크롤링 실패: {exc}")
                 exc_to_reraise = exc
+            finally:
+                await asyncio.to_thread(self._progress_store.clear_running)
 
         # lock 해제 후 HTTP 호출 — 최대 5초 타임아웃이 다음 크롤 스케줄에 영향 없도록.
         if activity:
@@ -1646,6 +1487,13 @@ class CrawlScheduler:
         )
 
     async def run_forever(self) -> None:
+        cleaned = await asyncio.to_thread(self._progress_store.cleanup_orphaned_jobs)
+        if cleaned:
+            _logger.info(
+                "시작 시 고아 크롤 job %d건 failed 처리",
+                cleaned,
+                extra={"correlation_id": "", "service": _SERVICE_NAME},
+            )
         self.setup_schedule()
         self._scheduler.start()
         try:
@@ -1653,10 +1501,36 @@ class CrawlScheduler:
         finally:
             self._scheduler.shutdown(wait=False)
 
+    async def wait_until_idle(self) -> None:
+        """진행 중인 크롤링 완료까지 대기. _run_lock 획득 즉시 해제 = idle 확인."""
+        async with self._run_lock:
+            pass
+
 
 async def _async_main() -> None:
+    import contextlib
+    import signal as _signal
+
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+    for sig in (_signal.SIGTERM, _signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_event.set)
+
     scheduler = CrawlScheduler()
-    await scheduler.run_forever()
+    main_task = asyncio.create_task(scheduler.run_forever())
+
+    await shutdown_event.wait()
+
+    _logger.info(
+        "종료 신호 수신 — 진행 중인 크롤링 완료 후 종료합니다",
+        extra={"correlation_id": "", "service": _SERVICE_NAME},
+    )
+    scheduler._scheduler.pause()
+    await scheduler.wait_until_idle()
+
+    main_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await main_task
 
 
 if __name__ == "__main__":

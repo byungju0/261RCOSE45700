@@ -25,6 +25,7 @@ REDIS_CHANNEL_CRAWL_TRIGGER: str = "crawl:trigger"
 REDIS_KEY_CRAWL_JOB_PREFIX: str = "crawl:jobs:"
 REDIS_KEY_CRAWL_STATS_LATEST: str = "crawl:stats:latest"
 REDIS_KEY_CRAWL_SOURCE_RUN_PREFIX: str = "crawl:source_runs:"
+REDIS_KEY_CRAWLER_RUNNING: str = "crawler:running"
 
 
 def get_redis_url() -> str:

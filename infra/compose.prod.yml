@@ -84,29 +84,6 @@ services:
       retries: 3
       start_period: 60s
 
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: tracker-flaresolverr
-    restart: unless-stopped
-    networks:
-      - tracker-net
-    environment:
-      LOG_LEVEL: info
-      LOG_HTML: "false"
-      CAPTCHA_SOLVER: none
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "2"
-    mem_limit: 1g
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8191/ > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   crawler:
     <<: *image-defaults
     image: ${REGISTRY_PATH}/crawler:${IMAGE_TAG:-latest}
@@ -123,11 +100,12 @@ services:
         condition: service_healthy
       tor:
         condition: service_healthy
-      flaresolverr:
-        condition: service_healthy
     # Playwright Chromium이 메모리 hog. 16GB 환경이라 hard cap은 후하게 4GB.
     mem_limit: 4g
     mem_reservation: 1g
+    # SIGTERM 수신 후 진행 중인 크롤 사이클 완료까지 대기. 전체 사이클 최대 소요 ~20분
+    # 기준으로 여유를 두되, 이 시간 안에 못 끝나면 SIGKILL.
+    stop_grace_period: 30m
 
   detection:
     <<: *image-defaults
