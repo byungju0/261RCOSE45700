@@ -6,7 +6,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query';
-import { apiClient } from './client';
+import { apiClient, ProblemDetailError } from './client';
 import { POLLING_QUERY_OPTIONS } from './queryDefaults';
 import { statsQueries } from './stats';
 import { detectionFilterToParams } from '@/lib/detectionFilter';
