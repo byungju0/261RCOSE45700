@@ -78,7 +78,7 @@ services:
       # 배포 게이트는 SOCKS 포트 readiness만 확인한다. 실제 Tor exit 품질은
       # 대상 사이트별 smoke에서 판단해야 하며, 외부 .onion 의존 healthcheck는
       # 일시 장애/차단으로 전체 배포를 멈출 수 있다.
-      test: ["CMD", "nc", "-z", "localhost", "9150"]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9150"]
       interval: 30s
       timeout: 5s
       retries: 3
