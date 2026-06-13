@@ -148,6 +148,7 @@ class SiteConfig:
     # 동적 이전 페이지 탐색: link.text 에 이 문자열이 포함된 링크를 다음 board_url 로 사용.
     # PTT 上頁 처럼 URL 을 미리 알 수 없는 파일시스템 기반 pagination 에 사용.
     prev_page_link_text: str | None = None
+    use_flaresolverr: bool = False                       # Cloudflare Bot Management 우회 (FlareSolverr 컨테이너 필요)
     enabled: bool = True
     note: str = ""                                      # 접근 제한·특이사항
 
@@ -380,8 +381,9 @@ SITES: dict[str, SiteConfig] = {
         max_retries=1,
         headers=_TW_HEADERS,
         title_keywords=_NC_GAME_KEYWORDS,
+        use_flaresolverr=True,
         enabled=True,
-        note="React SPA. JSON-LD title 주입으로 keyword 매칭 활성화.",
+        note="React SPA. Cloudflare Bot Management → FlareSolverr로 우회, JSON-LD 파싱.",
     ),
 
     "dcard_online": SiteConfig(
@@ -401,8 +403,9 @@ SITES: dict[str, SiteConfig] = {
         max_retries=1,
         headers=_TW_HEADERS,
         title_keywords=_NC_GAME_KEYWORDS,
+        use_flaresolverr=True,
         enabled=True,
-        note="線上遊戲 topic. JSON-LD title 주입으로 keyword 매칭 활성화.",
+        note="線上遊戲 topic. Cloudflare Bot Management → FlareSolverr로 우회, JSON-LD 파싱.",
     ),
 
     # ── 대만 Bahamut — NC 게임 8개 보드 (모두 순수 NC, title_keywords 불필요) ──

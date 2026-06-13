@@ -840,6 +840,52 @@ async def test_pipeline_passes_site_options_to_crawler_fetch():
     assert kwargs["override_navigator"] is True
 
 
+async def test_pipeline_reuses_flaresolverr_cookies_and_user_agent_for_detail_fetch():
+    """FlareSolverr listing 통과 후 clearance cookie/UA 를 상세 fetch 에 이어준다."""
+    custom_site = _single_page_site(replace(
+        SITES["inven_maple"],
+        headers={"Accept-Language": "ko"},
+        cookies=[{"name": "existing", "value": "old"}],
+        use_flaresolverr=True,
+    ))
+    flaresolverr_cookies = [
+        {
+            "name": "cf_clearance",
+            "value": "clearance-token",
+            "domain": ".example.test",
+            "path": "/",
+        }
+    ]
+    flaresolverr_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    )
+
+    pipeline, _, _ = _make_pipeline(crawl_result=_make_crawl_result(_KEYWORD_TEXT))
+    mock_crawler = pipeline._crawler
+
+    with patch(
+        "crawler.src.scheduler.crawl_scheduler.get_enabled_sites",
+        return_value={"inven_maple": custom_site},
+    ), patch(
+        "crawler.src.scheduler.crawl_scheduler._fetch_post_urls",
+        return_value=ListingResult(
+            urls=[_TEST_URL],
+            discovered_total=1,
+            keyword_matched=0,
+            keyword_unmatched=1,
+            flaresolverr_cookies=flaresolverr_cookies,
+            flaresolverr_user_agent=flaresolverr_user_agent,
+        ),
+    ):
+        await pipeline.run()
+
+    kwargs = mock_crawler.fetch.call_args.kwargs
+    assert kwargs["cookies"] == flaresolverr_cookies
+    assert kwargs["headers"] == {"Accept-Language": "ko"}
+    assert kwargs["user_agent"] == flaresolverr_user_agent
+
+
 async def test_pipeline_dedup_mark_seen_called_after_enqueue():
     """LPUSH 성공 후 dedup mark_seen(sadd)이 호출되며, 호출 순서를 보장한다 (Anti-Pattern #6)."""
     call_log: list[str] = []

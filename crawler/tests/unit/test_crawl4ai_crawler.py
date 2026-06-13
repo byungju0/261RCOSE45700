@@ -341,6 +341,23 @@ class TestCrawl4AICrawlerSiteOptions:
         finally:
             patcher.stop()
 
+    async def test_fetch_passes_user_agent_to_browser_config(self, tmp_path):
+        mock_result = _make_mock_result()
+        patcher, MockCrawler = _patch_crawler(mock_result)
+        try:
+            crawler = Crawl4AICrawler(output_dir=str(tmp_path))
+            user_agent = "Mozilla/5.0 FlareSolverr-UA"
+            await crawler.fetch(
+                self._URL,
+                correlation_id=self._CID,
+                download_images=False,
+                user_agent=user_agent,
+            )
+            browser_config = MockCrawler.call_args.kwargs["config"]
+            assert browser_config.user_agent == user_agent
+        finally:
+            patcher.stop()
+
     async def test_fetch_many_uses_arun_many_with_dispatcher(self, tmp_path):
         mock_results = [
             _make_mock_result(fit_md="fit one", raw_md="raw one"),

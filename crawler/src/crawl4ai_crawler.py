@@ -83,6 +83,7 @@ class Crawl4AICrawler:
         self,
         *,
         headers: dict[str, str] | None,
+        user_agent: str | None = None,
         user_agent_mode: str | None = None,
     ) -> BrowserConfig:
         kwargs: dict = dict(
@@ -93,6 +94,8 @@ class Crawl4AICrawler:
         )
         if headers is not None:
             kwargs["headers"] = headers
+        if user_agent is not None:
+            kwargs["user_agent"] = user_agent
         if user_agent_mode is not None:
             kwargs["user_agent_mode"] = user_agent_mode
         return BrowserConfig(**kwargs)
@@ -249,6 +252,7 @@ class Crawl4AICrawler:
         wait_until: str | None = None,
         simulate_user: bool = False,
         override_navigator: bool = False,
+        user_agent: str | None = None,
         user_agent_mode: str | None = None,
         c4a_script: list[str] | None = None,
         exclude_social_media_links: bool = True,
@@ -285,11 +289,12 @@ class Crawl4AICrawler:
             session_id=session_id,
         )
 
-        # headers / user_agent_mode 는 BrowserConfig 영역. proxy 는 최신 Crawl4AI
+        # headers / user_agent / user_agent_mode 는 BrowserConfig 영역. proxy 는 최신 Crawl4AI
         # 권장 방식에 맞춰 CrawlerRunConfig.proxy_config 로 전달한다.
-        if headers is not None or user_agent_mode is not None:
+        if headers is not None or user_agent is not None or user_agent_mode is not None:
             browser_config = self._build_browser_config(
                 headers=headers if headers is not None else self._default_headers,
+                user_agent=user_agent,
                 user_agent_mode=user_agent_mode,
             )
         else:
@@ -349,6 +354,7 @@ class Crawl4AICrawler:
         wait_until: str | None = None,
         simulate_user: bool = False,
         override_navigator: bool = False,
+        user_agent: str | None = None,
         user_agent_mode: str | None = None,
         c4a_script: list[str] | None = None,
         exclude_social_media_links: bool = True,
@@ -397,9 +403,10 @@ class Crawl4AICrawler:
             max_retries=max_retries,
         )
 
-        if headers is not None or user_agent_mode is not None:
+        if headers is not None or user_agent is not None or user_agent_mode is not None:
             browser_config = self._build_browser_config(
                 headers=headers if headers is not None else self._default_headers,
+                user_agent=user_agent,
                 user_agent_mode=user_agent_mode,
             )
         else:
