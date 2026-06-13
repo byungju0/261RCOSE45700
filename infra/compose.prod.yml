@@ -75,11 +75,12 @@ services:
         max-file: "2"
     mem_limit: 128m
     healthcheck:
-      # 공식 Dockerfile 과 동일한 healthcheck — .onion 주소는 Tor 회선 없이 절대 불가.
-      # curl은 이미지에 내장(apk add curl). start_period 60s = Tor 부트스트랩 여유.
-      test: ["CMD-SHELL", "curl --fail --socks5-hostname localhost:9150 -I -L 'https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/' || exit 1"]
+      # 배포 게이트는 SOCKS 포트 readiness만 확인한다. 실제 Tor exit 품질은
+      # 대상 사이트별 smoke에서 판단해야 하며, 외부 .onion 의존 healthcheck는
+      # 일시 장애/차단으로 전체 배포를 멈출 수 있다.
+      test: ["CMD", "nc", "-z", "localhost", "9150"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 60s
 
