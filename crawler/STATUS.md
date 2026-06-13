@@ -10,7 +10,7 @@
 ## 1. 한눈에
 
 - **안정 보드**: 11곳 (인벤 2 + PTT Lineage + Bahamut NC 8)
-- **운영 수집 profile**: `MAX_POSTS_PER_BOARD=30`, priority budget, detail concurrency 3, Dcard/52pojie serial
+- **운영 수집 profile**: `MAX_POSTS_PER_BOARD=30`, priority budget, detail concurrency 3, 52pojie serial
 - **인프라**: URL 중복 차단, 본문 SHA256 dedup, 공지·인증벽·캡차 자동 분류, inter-site delay
 - **테스트**: 183 unit/integration passed, ruff clean
 - **detection(LLM)**: 별도 서비스에서 OpenAI 멀티모달 LLM 분류와 RDS 저장 처리
@@ -102,14 +102,12 @@
 
 | site_id | 지역 | 진단 | 처방 |
 |---|---|---|---|
-| `dcard` | TW | listing 도달, 1페이지에 NC 글 0건 (title_keywords로 10건 거름) | 페이지네이션 또는 검색 URL 전환 |
 | `ptt_mobile_game` | TW | 동일 — Mobile-game 보드 1페이지에 NC 글 없음 | 동일 |
 
 ### 🔴 차단·실패
 
 | site_id | 지역 | 원인 | 비고 |
 |---|---|---|---|
-| `dcard_online` | TW | `wait_for=css:article` 타임아웃 — /f/online 구조 다름 | 셀렉터 재조정 필요 |
 | `52pojie` | CN | 0/5 — Windows 크랙 사이트라 NC 게임과 무관 | NC 타겟에선 우선순위 ↓ |
 | `tieba` | CN | HTTP 403 anti-bot | 중국 본토 IP 필요 |
 | `nga` | CN | HTTP 403 anti-bot | 중국 본토 IP 필요 |
@@ -156,7 +154,7 @@
 | `error` | 4xx/5xx 페이지 | ❌ |
 | `unknown` | 사이트 마커 미발견 (보수적 스킵) | ❌ |
 
-**Prefix dispatch**: `bahamut_*` / `ptt_*` / `dcard_*` / `inven_*` family 가 자동으로 같은 validator 사용 → 새 보드 추가 시 등록 코드 0.
+**Prefix dispatch**: `bahamut_*` / `ptt_*` / `inven_*` family 가 자동으로 같은 validator 사용 → 새 보드 추가 시 등록 코드 0.
 
 ### UrlDedupChecker (`crawler/src/preprocessor/url_dedup_checker.py`)
 
@@ -180,12 +178,12 @@ Redis ZSET 기반 cross-run URL 중복 차단. **fetch 자체를 막아** 대역
 | `MAX_POSTS_PER_BOARD` | `30` | 보드 listing 당 최대 raw 후보 수 |
 | `CRAWL_PRIORITY_BUDGET_ENABLED` | `true` | 제목 hard filter 대신 priority budget 적용 |
 | `CRAWL_P3_DEFAULT_CAP_PER_BOARD` | `1` | 일반 source P3 샘플 cap |
-| `CRAWL_P3_MIXED_CAP_PER_BOARD` | `5` | Dcard/PTT mixed source P3 샘플 cap |
+| `CRAWL_P3_MIXED_CAP_PER_BOARD` | `5` | PTT mixed source P3 샘플 cap |
 | `CRAWL_P3_52POJIE_CAP_PER_BOARD` | `1` | 52pojie P3 샘플 cap |
 | `CRAWL_DETAIL_FETCH_CONCURRENCY` | `3` | 운영 detail fetch 기본 병렬성 |
-| `CRAWL_DETAIL_SOURCE_CONCURRENCY` | `dcard=1,dcard_online=1,52pojie=1` | 민감 source serial 처리 |
+| `CRAWL_DETAIL_SOURCE_CONCURRENCY` | `52pojie=1` | 민감 source serial 처리 |
 | `CRAWL_DETAIL_FETCH_STAGGER_SECONDS` | `0.25` | detail batch 시작 stagger |
-| `CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES` | `0` | Dcard Cloudflare retry 기본 off |
+| `CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES` | `0` | Cloudflare retry 기본 off |
 | `CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS` | `0` | source cooldown 기본 off |
 | `CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS` | `0` | challenge cooldown 기본 off |
 | `CRAWL_INTERVAL_MINUTES` | `60` | APScheduler 주기 |
@@ -282,7 +280,7 @@ CRAWL_P3_DEFAULT_CAP_PER_BOARD=1 \
 CRAWL_P3_MIXED_CAP_PER_BOARD=5 \
 CRAWL_P3_52POJIE_CAP_PER_BOARD=1 \
 CRAWL_DETAIL_FETCH_CONCURRENCY=3 \
-CRAWL_DETAIL_SOURCE_CONCURRENCY=dcard=1,dcard_online=1,52pojie=1 \
+CRAWL_DETAIL_SOURCE_CONCURRENCY=52pojie=1 \
 CRAWL_DETAIL_FETCH_STAGGER_SECONDS=0.25 \
 CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES=0 \
 CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS=0 \
@@ -297,7 +295,7 @@ python -m crawler.src.scheduler.crawl_scheduler
 
 1. **레지스트리 NC 재타겟** — Bahamut 단일 `bahamut`(원신) → NC 8개 게임 site_id 로 분리
 2. **PTT** — C_Chat 보드에서 NC Lineage 보드로 교체 + over18 폼 js_code 자동 통과
-3. **`title_keywords`** — 혼합 보드(Dcard /f/game, PTT Mobile-game)의 listing 단계 사전 필터
+3. **`title_keywords`** — 혼합 보드(PTT Mobile-game)의 listing 단계 사전 필터
 4. **`UrlDedupChecker`** — Redis ZSET 기반 cross-run URL 중복 차단 (Tier 1)
 5. **`content_validator`** — 8-kind 분류 + prefix dispatch (`bahamut_*` 등)
 6. **Bahamut validator** — chrome 마커 의존 제거, **길이 기반** 으로 전환 (셀렉터 결과 호환)
@@ -313,8 +311,7 @@ python -m crawler.src.scheduler.crawl_scheduler
 | 항목 | 영향 | 대응 |
 |---|---|---|
 | Tieba/NGA HTTP 403 (한국 IP) | NC 중국권 데이터 불가 | 중국 residential 프록시 인프라 필요 |
-| Dcard /f/online wait_for 타임아웃 | 1개 보드 작동 안 함 | 셀렉터 재조정 |
-| Dcard /f/game · PTT Mobile-game 1페이지에 NC 글 0 | 시간당 0~2건 누락 가능 | 페이지네이션 또는 Dcard 자체 deprioritize |
+| PTT Mobile-game 1페이지에 NC 글 0 | 시간당 0~2건 누락 가능 | 페이지네이션 또는 검색 source 보강 |
 | 52pojie NC 무관 | NC 타겟엔 무용 | NC 외 외掛 일반 데이터 필요 시 유지, NC 전용엔 제외 |
 | 검색엔진형 (github/reddit/bing/baidu/...) 미구현 | 광범위 recall 못 함 | `SearchEngineConfig` 추상화 신설 |
 | crawler→detection 운영 smoke 부족 | 수집 후 분류·저장까지의 실운영 검증이 약함 | Redis queue 기반 end-to-end smoke 확대 |
@@ -324,7 +321,7 @@ python -m crawler.src.scheduler.crawl_scheduler
 ## 10. Roadmap (우선순위)
 
 1. **검색엔진형 추상화 + github** — 가장 쉬운 검색엔진. 추상화 검증용
-2. **dcard_online wait_for 수정** + **ptt_mobile_game 페이지네이션** — 작은 fix
+2. **ptt_mobile_game 페이지네이션** — 작은 fix
 3. **crawler→detection end-to-end smoke** — Redis queue 입력부터 OpenAI 분류, RDS 저장까지 검증
 4. **검색엔진형 확장** — reddit, bing, duckduckgo_cn
 5. **프록시 풀 통합** — 중국 IP 확보 후 nga/tieba/baidu/sogou 가동

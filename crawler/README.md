@@ -79,7 +79,7 @@ CRAWL_P3_DEFAULT_CAP_PER_BOARD=1 \
 CRAWL_P3_MIXED_CAP_PER_BOARD=5 \
 CRAWL_P3_52POJIE_CAP_PER_BOARD=1 \
 CRAWL_DETAIL_FETCH_CONCURRENCY=3 \
-CRAWL_DETAIL_SOURCE_CONCURRENCY=dcard=1,dcard_online=1,52pojie=1 \
+CRAWL_DETAIL_SOURCE_CONCURRENCY=52pojie=1 \
 CRAWL_DETAIL_FETCH_STAGGER_SECONDS=0.25 \
 CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES=0 \
 CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS=0 \
@@ -129,8 +129,6 @@ Validator는 prefix dispatch — `my_new_*` 같은 family 추가 시 `content_va
 
 ## 다음 단계
 
-- [ ] dcard_online `wait_for` 셀렉터 수정
-- [ ] ptt_mobile_game / dcard 페이지네이션
 - [ ] 검색엔진형 추상화 (`SearchEngineConfig`) + github 첫 도전
 - [ ] detection 서비스 연동 smoke 확대 (OpenAI 멀티모달 LLM)
 - [ ] 중국 IP 프록시 인프라 (nga/tieba/baidu/sogou)
