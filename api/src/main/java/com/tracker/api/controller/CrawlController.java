@@ -25,7 +25,7 @@ public class CrawlController {
     private final CrawlTriggerService crawlTriggerService;
 
     @PostMapping("/crawl/trigger")
-    @Operation(summary = "수동 크롤링 트리거", description = "Redis crawl:trigger 채널에 PUBLISH하고 jobId를 반환. 완료까지 약 3분 소요.")
+    @Operation(summary = "수동 크롤링 트리거", description = "Redis crawl:trigger 채널에 PUBLISH하고 jobId를 반환.")
     public ResponseEntity<CrawlTriggerResponse> trigger(HttpServletRequest request) {
 
         String raw = request.getHeader("X-Correlation-ID");
@@ -35,7 +35,7 @@ public class CrawlController {
 
         return ResponseEntity.accepted()
                 .header("X-Correlation-ID", correlationId)
-                .body(new CrawlTriggerResponse(jobId, "triggered", 3, "/api/crawl/jobs/" + jobId));
+                .body(new CrawlTriggerResponse(jobId, "triggered", "/api/crawl/jobs/" + jobId));
     }
 
     @GetMapping("/crawl/jobs/{jobId}")

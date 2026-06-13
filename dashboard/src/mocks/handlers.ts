@@ -199,7 +199,6 @@ export const handlers = [
     const response: CrawlTriggerResponse = {
       jobId: 'mock-crawl-job',
       status: 'triggered',
-      estimatedMinutes: 3,
       statusUrl: '/api/crawl/jobs/mock-crawl-job',
     };
     return HttpResponse.json(response, { status: 202 });

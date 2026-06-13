@@ -179,7 +179,6 @@ class DetectionControllerTest {
                                 .andExpect(status().isAccepted())
                                 .andExpect(jsonPath("$.jobId").value("job-1234"))
                                 .andExpect(jsonPath("$.status").value("triggered"))
-                                .andExpect(jsonPath("$.estimatedMinutes").value(3))
                                 .andExpect(jsonPath("$.statusUrl").value("/api/crawl/jobs/job-1234"))
                                 .andExpect(header().string("X-Correlation-ID", "test-cid-1234"));
 

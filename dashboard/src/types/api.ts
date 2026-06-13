@@ -93,7 +93,6 @@ export interface DetectionFilter {
 export interface CrawlTriggerResponse {
   jobId: string;
   status: 'triggered' | 'in_progress';
-  estimatedMinutes: number;
   statusUrl: string;
 }
 
