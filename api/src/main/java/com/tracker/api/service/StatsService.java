@@ -1,5 +1,6 @@
 package com.tracker.api.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tracker.api.dto.StatsResponse;
 import com.tracker.api.exception.InvalidFilterParamException;
@@ -18,6 +19,7 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.IntStream;
 
 @Slf4j
@@ -26,16 +28,20 @@ public class StatsService {
 
     private static final int MIN_PERIOD_DAYS = 1;
     private static final int MAX_PERIOD_DAYS = 365;
+    private static final String CRAWL_SOURCE_RUN_PREFIX = "crawl:source_runs:";
 
     private final StatsRepository statsRepository;
     private final ObjectMapper objectMapper;
+    private final StringRedisTemplate mqRedisTemplate;
     private final StringRedisTemplate cacheRedisTemplate;
 
     public StatsService(StatsRepository statsRepository,
                         ObjectMapper objectMapper,
+                        StringRedisTemplate mqRedisTemplate,
                         @Qualifier("cacheRedisTemplate") StringRedisTemplate cacheRedisTemplate) {
         this.statsRepository = statsRepository;
         this.objectMapper = objectMapper;
+        this.mqRedisTemplate = mqRedisTemplate;
         this.cacheRedisTemplate = cacheRedisTemplate;
     }
 
@@ -102,10 +108,23 @@ public class StatsService {
 
         List<StatsResponse.TrendItem> trend = buildTrend(days, today);
 
-        var sourceHealth = statsRepository.findSourceHealthRaw().stream()
-                .map(row -> new StatsResponse.SourceHealthItem(
-                        (String) row[0],
-                        toInstant(row[1])))
+        Map<String, SourceRunSummary> sourceRuns = loadSourceRuns();
+        Map<String, Instant> lastIngestedBySite = new TreeMap<>();
+        statsRepository.findSourceHealthRaw().forEach(row ->
+                lastIngestedBySite.put((String) row[0], toInstant(row[1])));
+        sourceRuns.keySet().forEach(siteName -> lastIngestedBySite.putIfAbsent(siteName, null));
+        var sourceHealth = lastIngestedBySite.entrySet().stream()
+                .map(entry -> {
+                    SourceRunSummary run = sourceRuns.get(entry.getKey());
+                    return new StatsResponse.SourceHealthItem(
+                            entry.getKey(),
+                            run == null ? null : run.lastCheckedAt(),
+                            entry.getValue(),
+                            run == null ? 0 : run.fetched(),
+                            run == null ? 0 : run.queued(),
+                            run == null ? 0 : run.validatorSkipped(),
+                            run == null ? 0 : run.failed());
+                })
                 .toList();
 
         return new StatsResponse(todayCount, delta, typeDistribution, siteDistribution, langDistribution, trend, sourceHealth);
@@ -145,8 +164,35 @@ public class StatsService {
         return "cache:detections:stats" + (days != null ? ":days:" + days : "");
     }
 
+    private Map<String, SourceRunSummary> loadSourceRuns() {
+        Map<String, SourceRunSummary> runs = new HashMap<>();
+        try {
+            var keys = mqRedisTemplate.keys(CRAWL_SOURCE_RUN_PREFIX + "*");
+            if (keys == null) return runs;
+            for (String key : keys) {
+                String json = mqRedisTemplate.opsForValue().get(key);
+                if (json == null || json.isBlank()) continue;
+                Map<String, Object> raw = objectMapper.readValue(json, new TypeReference<>() {});
+                String siteName = strFrom(raw, "siteName");
+                if (siteName.isBlank()) {
+                    siteName = key.substring(CRAWL_SOURCE_RUN_PREFIX.length());
+                }
+                runs.put(siteName, new SourceRunSummary(
+                        toInstant(strFrom(raw, "lastCheckedAt")),
+                        longFrom(raw, "fetched"),
+                        longFrom(raw, "queued"),
+                        longFrom(raw, "validatorSkipped"),
+                        longFrom(raw, "failed")));
+            }
+        } catch (Exception e) {
+            log.warn("Redis source run read failed: {}", e.getMessage());
+        }
+        return runs;
+    }
+
     private static Instant toInstant(Object value) {
         if (value == null) return null;
+        if (value instanceof String s) return s.isBlank() ? null : Instant.parse(s);
         if (value instanceof OffsetDateTime odt) return odt.toInstant();
         if (value instanceof LocalDateTime ldt) return ldt.toInstant(ZoneOffset.UTC);
         if (value instanceof java.sql.Timestamp ts) return ts.toInstant();
@@ -176,5 +222,28 @@ public class StatsService {
         throw new InvalidFilterParamException("days는 1~365 사이 숫자만 허용됩니다.");
     }
 
+    private long longFrom(Map<String, Object> data, String key) {
+        Object v = data.get(key);
+        if (v == null) return 0;
+        if (v instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(v.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private String strFrom(Map<String, Object> data, String key) {
+        Object v = data.get(key);
+        return v == null ? "" : v.toString();
+    }
+
     private record TimeRange(Instant from, Instant to) {}
+    private record SourceRunSummary(
+            Instant lastCheckedAt,
+            long fetched,
+            long queued,
+            long validatorSkipped,
+            long failed
+    ) {}
 }

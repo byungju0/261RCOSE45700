@@ -193,16 +193,22 @@ function buildStatsBase(detections: readonly Detection[]): Omit<StatsResponse, '
     langCount.set(d.language, (langCount.get(d.language) ?? 0) + 1);
   });
 
-  // sourceHealth: 사이트별 마지막 크롤 시각 시뮬레이션 (ACTIVE/OK/STALE/UNKNOWN 분포)
+  // sourceHealth: 크롤 시도 freshness + 저장 데이터 freshness 분리 시뮬레이션.
   const now = Date.now();
   const sourceHealth = SOURCE_META.map((s, i) => {
     const offsets = [30, 90, 600, 1440 * 3, null]; // 분 단위 or null
     const offset = offsets[i % offsets.length];
+    const lastCrawledAt = new Date(now - [10, 40, 120, 360, 720][i % 5] * 60_000).toISOString();
     return {
       siteName: s.name,
-      lastCrawledAt: offset !== null
+      lastCrawledAt,
+      lastIngestedAt: offset !== null
         ? new Date(now - offset * 60_000).toISOString()
         : null,
+      fetched: 5 + (i % 7),
+      queued: i % 5 === 4 ? 0 : 1 + (i % 4),
+      validatorSkipped: i % 5 === 4 ? 5 : i % 3,
+      failed: i % 6 === 0 ? 1 : 0,
     };
   });
 

@@ -16,5 +16,13 @@ public record StatsResponse(
     public record SiteDistributionItem(String site, long count) {}
     public record LangDistributionItem(String lang, long count) {}
     public record TrendItem(String date, long count) {}
-    public record SourceHealthItem(String siteName, Instant lastCrawledAt) {}
+    public record SourceHealthItem(
+            String siteName,
+            Instant lastCrawledAt,
+            Instant lastIngestedAt,
+            long fetched,
+            long queued,
+            long validatorSkipped,
+            long failed
+    ) {}
 }

@@ -1,6 +1,7 @@
 package com.tracker.api.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tracker.api.dto.StatsResponse;
 import com.tracker.api.exception.InvalidFilterParamException;
 import com.tracker.api.repository.StatsRepository;
@@ -27,15 +28,16 @@ import static org.mockito.Mockito.*;
 class StatsServiceTest {
 
     @Mock StatsRepository statsRepository;
+    @Mock StringRedisTemplate mqRedisTemplate;
     @Mock StringRedisTemplate cacheRedisTemplate;
     @Mock ValueOperations<String, String> valueOps;
 
-    ObjectMapper objectMapper = new ObjectMapper();
+    ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
     StatsService statsService;
 
     @BeforeEach
     void setUp() {
-        statsService = new StatsService(statsRepository, objectMapper, cacheRedisTemplate);
+        statsService = new StatsService(statsRepository, objectMapper, mqRedisTemplate, cacheRedisTemplate);
     }
 
     @Test
@@ -63,6 +65,17 @@ class StatsServiceTest {
         when(statsRepository.findTypeDistributionRaw()).thenReturn(List.<Object[]>of(new Object[]{"매크로_판매", 4L}));
         when(statsRepository.findSiteDistributionRaw()).thenReturn(List.<Object[]>of(new Object[]{"tailstar.net", 3L}));
         when(statsRepository.findLangDistributionRaw()).thenReturn(List.<Object[]>of(new Object[]{"zh-CN", 2L}));
+        when(statsRepository.findSourceHealthRaw()).thenReturn(List.<Object[]>of(new Object[]{"52pojie", null}));
+        when(mqRedisTemplate.keys("crawl:source_runs:*")).thenReturn(java.util.Set.of(
+                "crawl:source_runs:52pojie",
+                "crawl:source_runs:github"));
+        when(mqRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("crawl:source_runs:52pojie")).thenReturn(
+                "{\"siteName\":\"52pojie\",\"lastCheckedAt\":\"2026-06-13T11:53:14Z\","
+                + "\"fetched\":5,\"queued\":0,\"validatorSkipped\":5,\"failed\":0}");
+        when(valueOps.get("crawl:source_runs:github")).thenReturn(
+                "{\"siteName\":\"github\",\"lastCheckedAt\":\"2026-06-13T11:54:00Z\","
+                + "\"fetched\":12,\"queued\":6,\"validatorSkipped\":0,\"failed\":0}");
 
         StatsResponse result = statsService.getStats(null);
 
@@ -71,6 +84,16 @@ class StatsServiceTest {
         assertThat(result.typeDistribution().getFirst().type()).isEqualTo("매크로_판매");
         assertThat(result.siteDistribution().getFirst().site()).isEqualTo("tailstar.net");
         assertThat(result.langDistribution().getFirst().lang()).isEqualTo("zh-CN");
+        assertThat(result.sourceHealth().getFirst().siteName()).isEqualTo("52pojie");
+        assertThat(result.sourceHealth().getFirst().lastCrawledAt()).isEqualTo(Instant.parse("2026-06-13T11:53:14Z"));
+        assertThat(result.sourceHealth().getFirst().lastIngestedAt()).isNull();
+        assertThat(result.sourceHealth().getFirst().fetched()).isEqualTo(5);
+        assertThat(result.sourceHealth().getFirst().queued()).isZero();
+        assertThat(result.sourceHealth().getFirst().validatorSkipped()).isEqualTo(5);
+        assertThat(result.sourceHealth()).extracting(StatsResponse.SourceHealthItem::siteName)
+                .containsExactly("52pojie", "github");
+        assertThat(result.sourceHealth().get(1).lastIngestedAt()).isNull();
+        assertThat(result.sourceHealth().get(1).queued()).isEqualTo(6);
         verify(statsRepository).countToday(any(LocalDate.class));
         verify(valueOps).set(eq("cache:detections:stats"), any(String.class), eq(Duration.ofSeconds(60)));
     }
@@ -83,6 +106,7 @@ class StatsServiceTest {
         when(statsRepository.findTypeDistributionRaw()).thenReturn(List.of());
         when(statsRepository.findSiteDistributionRaw()).thenReturn(List.of());
         when(statsRepository.findLangDistributionRaw()).thenReturn(List.of());
+        when(statsRepository.findSourceHealthRaw()).thenReturn(List.of());
 
         StatsResponse result = statsService.getStats(null);
 
@@ -115,6 +139,7 @@ class StatsServiceTest {
                 .thenReturn(List.of());
         when(statsRepository.findTrendRaw(any(Instant.class), any(Instant.class)))
                 .thenReturn(List.<Object[]>of(new Object[]{today, 5L}));
+        when(statsRepository.findSourceHealthRaw()).thenReturn(List.of());
 
         StatsResponse result = statsService.getStats(null, 14);
 
@@ -143,6 +168,7 @@ class StatsServiceTest {
                 .thenReturn(List.of());
         when(statsRepository.findTrendRaw(any(Instant.class), any(Instant.class)))
                 .thenReturn(List.of());
+        when(statsRepository.findSourceHealthRaw()).thenReturn(List.of());
 
         StatsResponse result = statsService.getStats("weekly");
 

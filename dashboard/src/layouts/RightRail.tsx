@@ -3,6 +3,9 @@ import { statsQueries } from '@/api/stats';
 import { useActivityQuery } from '@/api/activity';
 import { useCrawlerQueueQuery, useCorruptQueueQuery, useDlqDepthQuery, useProcessingQueueQuery } from '@/api/metrics';
 import { formatRelativeTime } from '@/lib/time';
+import type { SourceHealthItem } from '@/types/api';
+
+const ACTIVITY_DISPLAY_LIMIT = 10;
 
 export function RightRail() {
   const statsQuery = useQuery(statsQueries.byPeriod());
@@ -14,6 +17,7 @@ export function RightRail() {
 
   const sourceHealth = statsQuery.data?.sourceHealth ?? [];
   const activities = activityQuery.data ?? [];
+  const visibleActivities = activities.slice(0, ACTIVITY_DISPLAY_LIMIT);
 
   return (
     <aside
@@ -30,7 +34,7 @@ export function RightRail() {
         {activities.length === 0 ? (
           <EmptyRow label={activityQuery.isLoading ? '불러오는 중…' : '활동 없음'} />
         ) : (
-          activities.map((a) => {
+          visibleActivities.map((a) => {
             const meta = ACTIVITY_META[a.eventType] ?? { variant: 'default' as ActivityVariant, tag: undefined };
             return (
               <ActivityItem
@@ -51,14 +55,27 @@ export function RightRail() {
           {sourceHealth.length === 0 ? (
             <EmptyRow label={statsQuery.isLoading ? '불러오는 중…' : '소스 없음'} />
           ) : (
-            sourceHealth.map(({ siteName, lastCrawledAt }) => (
-              <HealthRow key={siteName} name={siteName} lastCrawledAt={lastCrawledAt} />
+            sourceHealth.map((source) => (
+              <SourceHealthRow key={source.siteName} source={source} />
             ))
           )}
         </div>
       </RailSection>
 
-      {/* 3. Pipeline */}
+      {/* 3. Data freshness */}
+      <RailSection title="Data freshness">
+        <div className="flex flex-col">
+          {sourceHealth.length === 0 ? (
+            <EmptyRow label={statsQuery.isLoading ? '불러오는 중…' : '데이터 없음'} />
+          ) : (
+            sourceHealth.map((source) => (
+              <DataFreshnessRow key={source.siteName} source={source} />
+            ))
+          )}
+        </div>
+      </RailSection>
+
+      {/* 4. Pipeline */}
       <RailSection title="Pipeline">
         <div className="flex flex-col">
           <MetricRow name="Crawler queue" value={fmtQueue(crawlerQueueQuery.data)} />
@@ -84,6 +101,11 @@ function sourceStatus(lastCrawledAt: string | null): { label: string; color: str
   if (diffH < 24)  return { label: 'OK',      color: 'var(--safe)' };
   if (diffH < 168) return { label: 'STALE',   color: 'var(--warn, #f59e0b)' };
   return             { label: 'OLD',    color: 'var(--fg-3)' };
+}
+
+function dataFreshnessStatus(lastIngestedAt: string | null): { label: string; color: string } {
+  if (!lastIngestedAt) return { label: 'NO DATA', color: 'var(--fg-3)' };
+  return sourceStatus(lastIngestedAt);
 }
 
 const ACTIVITY_META: Record<string, { variant: ActivityVariant; tag?: string }> = {
@@ -173,11 +195,46 @@ function ActivityItem({
   );
 }
 
-function HealthRow({ name, lastCrawledAt }: { name: string; lastCrawledAt: string | null }) {
-  const { label, color } = sourceStatus(lastCrawledAt);
-  const title = lastCrawledAt
-    ? `마지막 크롤: ${new Date(lastCrawledAt).toLocaleString('ko-KR')}`
-    : '크롤 이력 없음';
+function SourceHealthRow({ source }: { source: SourceHealthItem }) {
+  const { label, color } = sourceStatus(source.lastCrawledAt);
+  const title = source.lastCrawledAt
+    ? `마지막 크롤 시도: ${new Date(source.lastCrawledAt).toLocaleString('ko-KR')}`
+    : '크롤 시도 이력 없음';
+  const sub = source.lastCrawledAt
+    ? `fetch ${source.fetched} · queue ${source.queued} · skip ${source.validatorSkipped} · fail ${source.failed}`
+    : 'run 없음';
+  return (
+    <div
+      className="grid items-center border-b last:border-b-0"
+      style={{
+        gridTemplateColumns: '16px 1fr auto',
+        gap: '12px',
+        padding: '10px 0',
+        borderColor: 'var(--border-1)',
+      }}
+      title={title}
+    >
+      <span className="size-2.5 rounded-full" style={{ background: color }} />
+      <span className="min-w-0">
+        <span className="font-mono block truncate" style={{ color: 'var(--fg-2)', fontSize: 'var(--text-base-mono)' }}>
+          {source.siteName}
+        </span>
+        <span className="font-mono block truncate text-[0.65rem]" style={{ color: 'var(--fg-3)' }}>
+          {sub}
+        </span>
+      </span>
+      <span className="font-mono text-right" style={{ color, fontSize: 'var(--text-base-mono)' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function DataFreshnessRow({ source }: { source: SourceHealthItem }) {
+  const { label, color } = dataFreshnessStatus(source.lastIngestedAt);
+  const title = source.lastIngestedAt
+    ? `마지막 저장 데이터: ${new Date(source.lastIngestedAt).toLocaleString('ko-KR')}`
+    : '저장된 데이터 없음';
   return (
     <div
       className="grid items-center border-b last:border-b-0"
@@ -191,7 +248,7 @@ function HealthRow({ name, lastCrawledAt }: { name: string; lastCrawledAt: strin
     >
       <span className="size-2.5 rounded-full" style={{ background: color }} />
       <span className="font-mono truncate" style={{ color: 'var(--fg-2)', fontSize: 'var(--text-base-mono)' }}>
-        {name}
+        {source.siteName}
       </span>
       <span className="font-mono text-right" style={{ color, fontSize: 'var(--text-base-mono)' }}>
         {label}

@@ -786,11 +786,11 @@ def _delta(current: int, before: dict[str, int], key: str) -> int:
     return current - before[key]
 
 
-def _log_site_yield_summary(
+def _site_yield_summary(
     site_id: str,
     stats: PipelineStats,
     before: dict[str, int],
-) -> None:
+) -> dict[str, int | str]:
     selected = _delta(stats.listing_urls_selected, before, "selected")
     attempted = _delta(stats.attempted, before, "attempted")
     enqueued = _delta(stats.enqueued, before, "enqueued")
@@ -801,26 +801,48 @@ def _log_site_yield_summary(
         + _delta(stats.skipped_blocked, before, "blocked")
         + _delta(stats.skipped_unknown, before, "unknown")
     )
+    return {
+        "siteName": site_id,
+        "lastCheckedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "boards": _delta(stats.listing_boards, before, "boards"),
+        "discovered": _delta(stats.listing_discovered_total, before, "discovered"),
+        "selected": selected,
+        "selectedP0": _delta(stats.selected_p0, before, "p0"),
+        "selectedP1": _delta(stats.selected_p1, before, "p1"),
+        "selectedP2": _delta(stats.selected_p2, before, "p2"),
+        "selectedP3": _delta(stats.selected_p3, before, "p3"),
+        "keywordMatched": _delta(stats.listing_keyword_matched, before, "kw_matched"),
+        "keywordUnmatched": _delta(stats.listing_keyword_unmatched, before, "kw_unmatched"),
+        "fetched": attempted,
+        "queued": enqueued,
+        "skippedSeenUrl": url_dup,
+        "skippedDedup": _delta(stats.skipped_dedup, before, "body_dup"),
+        "validatorSkipped": validator_skipped,
+        "failed": _delta(stats.failed, before, "failed"),
+    }
+
+
+def _log_site_yield_summary(summary: dict[str, int | str]) -> None:
     _logger.info(
         "source yield: site=%s boards=%d discovered=%d selected=%d"
         " P0=%d P1=%d P2=%d P3=%d kw_matched=%d kw_unmatched=%d"
         " fetched=%d queued=%d url중복=%d 본문중복=%d validator스킵=%d 실패=%d",
-        site_id,
-        _delta(stats.listing_boards, before, "boards"),
-        _delta(stats.listing_discovered_total, before, "discovered"),
-        selected,
-        _delta(stats.selected_p0, before, "p0"),
-        _delta(stats.selected_p1, before, "p1"),
-        _delta(stats.selected_p2, before, "p2"),
-        _delta(stats.selected_p3, before, "p3"),
-        _delta(stats.listing_keyword_matched, before, "kw_matched"),
-        _delta(stats.listing_keyword_unmatched, before, "kw_unmatched"),
-        attempted,
-        enqueued,
-        url_dup,
-        _delta(stats.skipped_dedup, before, "body_dup"),
-        validator_skipped,
-        _delta(stats.failed, before, "failed"),
+        summary["siteName"],
+        summary["boards"],
+        summary["discovered"],
+        summary["selected"],
+        summary["selectedP0"],
+        summary["selectedP1"],
+        summary["selectedP2"],
+        summary["selectedP3"],
+        summary["keywordMatched"],
+        summary["keywordUnmatched"],
+        summary["fetched"],
+        summary["queued"],
+        summary["skippedSeenUrl"],
+        summary["skippedDedup"],
+        summary["validatorSkipped"],
+        summary["failed"],
         extra={"correlation_id": "", "service": _SERVICE_NAME},
     )
 
@@ -950,6 +972,25 @@ class CrawlPipeline:
             return
         github_stats = await self._github_source.run()
         self._merge_github_stats(stats, github_stats)
+        if self._progress_store is not None:
+            self._progress_store.store_source_run("github", {
+                "lastCheckedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "boards": 0,
+                "discovered": github_stats.discovered,
+                "selected": github_stats.selected,
+                "selectedP0": 0,
+                "selectedP1": 0,
+                "selectedP2": 0,
+                "selectedP3": 0,
+                "keywordMatched": 0,
+                "keywordUnmatched": github_stats.discovered,
+                "fetched": github_stats.selected,
+                "queued": github_stats.enqueued,
+                "skippedSeenUrl": github_stats.skipped_seen_url,
+                "skippedDedup": github_stats.skipped_dedup,
+                "validatorSkipped": 0,
+                "failed": github_stats.failed,
+            })
 
     @staticmethod
     def _merge_github_stats(stats: PipelineStats, github_stats: GitHubSourceStats) -> None:
@@ -1022,7 +1063,10 @@ class CrawlPipeline:
                     )
                     board_idx += 1
 
-        _log_site_yield_summary(site_id, stats, before)
+        source_summary = _site_yield_summary(site_id, stats, before)
+        _log_site_yield_summary(source_summary)
+        if self._progress_store is not None:
+            self._progress_store.store_source_run(site_id, source_summary)
         if self._progress_store is not None and job_id:
             self._progress_store.mark_site_complete(
                 job_id,

@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 
 import redis
 
-from shared.config.redis_config import REDIS_KEY_CRAWL_JOB_PREFIX, REDIS_KEY_CRAWL_STATS_LATEST
+from shared.config.redis_config import (
+    REDIS_KEY_CRAWL_JOB_PREFIX,
+    REDIS_KEY_CRAWL_SOURCE_RUN_PREFIX,
+    REDIS_KEY_CRAWL_STATS_LATEST,
+)
 
 _JOB_TTL_SECONDS = 6 * 60 * 60
 
@@ -126,6 +130,17 @@ class CrawlJobProgressStore:
         """파이프라인 완료 후 funnel 통계를 Redis에 저장. GET /api/crawl/stats 에서 읽는다."""
         data = {**stats, "recordedAt": stats.get("recordedAt") or _now()}
         self._redis.set(REDIS_KEY_CRAWL_STATS_LATEST, json.dumps(data), ex=_JOB_TTL_SECONDS * 7)
+
+    def store_source_run(self, site_id: str, stats: dict[str, int | str]) -> None:
+        """source별 마지막 크롤 시도 요약. GET /api/stats 의 Source health 에서 읽는다."""
+        if not site_id:
+            return
+        data = {**stats, "siteName": site_id, "lastCheckedAt": stats.get("lastCheckedAt") or _now()}
+        self._redis.set(
+            f"{REDIS_KEY_CRAWL_SOURCE_RUN_PREFIX}{site_id}",
+            json.dumps(data),
+            ex=_JOB_TTL_SECONDS * 7,
+        )
 
     def _update(self, job_id: str, **fields: str) -> None:
         if not job_id:

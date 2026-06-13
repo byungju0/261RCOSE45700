@@ -58,6 +58,11 @@ export interface TrendEntry {
 export interface SourceHealthItem {
   siteName: string;
   lastCrawledAt: string | null;
+  lastIngestedAt: string | null;
+  fetched: number;
+  queued: number;
+  validatorSkipped: number;
+  failed: number;
 }
 
 export interface StatsResponse {

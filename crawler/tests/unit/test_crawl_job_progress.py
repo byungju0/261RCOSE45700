@@ -58,3 +58,28 @@ def test_progress_store_marks_site_progress():
     assert mapping["percent"] == "38"
     assert mapping["currentSite"] == "bahamut"
     redis.expire.assert_called_once_with("crawl:jobs:job-1234", 6 * 60 * 60)
+
+
+def test_progress_store_stores_source_run_summary():
+    redis = MagicMock()
+    store = CrawlJobProgressStore(redis)
+
+    store.store_source_run("52pojie", {
+        "lastCheckedAt": "2026-06-13T11:53:14Z",
+        "fetched": 5,
+        "queued": 0,
+        "validatorSkipped": 5,
+        "failed": 0,
+    })
+
+    redis.set.assert_called_once()
+    key, payload = redis.set.call_args.args
+    data = json.loads(payload)
+    assert key == "crawl:source_runs:52pojie"
+    assert data["siteName"] == "52pojie"
+    assert data["lastCheckedAt"] == "2026-06-13T11:53:14Z"
+    assert data["fetched"] == 5
+    assert data["queued"] == 0
+    assert data["validatorSkipped"] == 5
+    assert data["failed"] == 0
+    assert redis.set.call_args.kwargs["ex"] == 7 * 6 * 60 * 60
