@@ -12,7 +12,7 @@
 - **안정 보드**: 11곳 (인벤 2 + PTT Lineage + Bahamut NC 8)
 - **운영 수집 profile**: `MAX_POSTS_PER_BOARD=50`, priority budget, detail concurrency 3, 52pojie serial
 - **인프라**: URL 중복 차단, 본문 SHA256 dedup, 공지·인증벽·캡차 자동 분류, inter-site delay
-- **테스트**: 191 unit/integration passed, flake8 clean
+- **테스트**: 183 unit/integration passed, flake8 clean
 - **detection(LLM)**: 별도 서비스에서 OpenAI 멀티모달 LLM 분류와 RDS 저장 처리
 
 ---
@@ -184,6 +184,7 @@ Redis ZSET 기반 cross-run URL 중복 차단. **fetch 자체를 막아** 대역
 | `CRAWL_DETAIL_SOURCE_CONCURRENCY` | `52pojie=1` | 민감 source serial 처리 |
 | `CRAWL_DETAIL_FETCH_STAGGER_SECONDS` | `0.25` | detail batch 시작 stagger |
 | `CRAWL_DETAIL_CLOUDFLARE_BACKOFF_RETRIES` | `0` | Cloudflare retry 기본 off |
+| `CRAWL_DETAIL_CLOUDFLARE_BACKOFF_SECONDS` | `0` | Cloudflare retry 간 대기(초) 기본 off |
 | `CRAWL_DETAIL_SOURCE_COOLDOWN_SECONDS` | `0` | source cooldown 기본 off |
 | `CRAWL_DETAIL_CHALLENGE_COOLDOWN_SECONDS` | `0` | challenge cooldown 기본 off |
 | `CRAWL_INTERVAL_MINUTES` | `60` | APScheduler 주기 |
@@ -199,9 +200,9 @@ Redis ZSET 기반 cross-run URL 중복 차단. **fetch 자체를 막아** 대역
 
 | 모드 | `MAX_POSTS_PER_BOARD` | `CRAWL_INTERVAL_MINUTES` | 예상 결과 |
 |---|---|---|---|
-| 운영 기본 | 30 + priority budget | 60 | EC2 1대 기준 안정/비용 균형 |
-| EC2 빠른 실험 | 30 + priority budget | 60 | `CRAWL_DETAIL_FETCH_CONCURRENCY=4`만 1단계 실험 |
-| 저부하 | 30 + priority budget | 120 | 2시간 주기, 비용/부하 절감 |
+| 운영 기본 | 50 + priority budget | 60 | EC2 1대 기준 안정/비용 균형 |
+| EC2 빠른 실험 | 50 + priority budget | 60 | `CRAWL_DETAIL_FETCH_CONCURRENCY=4`만 1단계 실험 |
+| 저부하 | 50 + priority budget | 120 | 2시간 주기, 비용/부하 절감 |
 | 로컬 probe | 별도 | 수동 | `DETAIL_PROBE_FAST_MODE=1`, `DETAIL_PROBE_CONCURRENCY=10` |
 
 UrlDedupChecker 덕분에 인터벌 단축해도 같은 URL 재fetch 안 함.
@@ -261,7 +262,7 @@ cd crawler
 source .venv/bin/activate     # .venv 없으면: python3 -m venv .venv && pip install -r requirements.txt
 
 # 전체 테스트 (mock 기반, 인터넷 불필요)
-pytest -q                           # 183 passed
+pytest -q                           # 183 passed (unit 161건 + integration 22건)
 
 # ruff 린트
 ruff check crawler/ shared/ scripts/

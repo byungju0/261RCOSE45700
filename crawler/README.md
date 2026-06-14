@@ -22,10 +22,10 @@ pip install -r requirements.txt
 playwright install chromium
 
 # 4) 단위/통합 테스트 (mock, 인터넷 불필요)
-pytest -q                                          # 190 passed 예상
+pytest -q                                          # 183 passed 예상
 
 # 5) ruff 린트
-ruff check crawler/ shared/ scripts/
+ruff check src/ scripts/ ../shared/
 
 # 6) 실 사이트 smoke (tieba/nga 자동 제외)
 python scripts/smoke_each_site.py
@@ -49,10 +49,10 @@ crawler/                         # 이 디렉터리 (monorepo 루트의 crawler/
 │   │                            # url_dedup_checker, language_detector, serializer
 │   ├── queue/                   # redis_publisher
 │   ├── scheduler/               # crawl_scheduler (CrawlPipeline + APScheduler),
-│   │                            # trigger_listener, candidate_scoring, crawl_job_progress
+│   │                            # trigger_listener, candidate_scoring, crawl_job_progress, healthcheck
 │   ├── sites/                   # registry — SiteConfig + SITES dict (13 enabled)
 │   └── sources/                 # GitHubSource — GitHub REST API 검색 통합
-└── tests/                       # unit + integration (190건)
+└── tests/                       # unit + integration (183건)
 
 # shared/  ← monorepo 루트에 위치 (../shared/)
 #   crawl_event, redis_config, logger, interfaces/llm 등 공용
@@ -64,8 +64,9 @@ crawler/                         # 이 디렉터리 (monorepo 루트의 crawler/
 ## 운영 (Redis 필요)
 
 ```bash
-# 가상환경 활성화 후 실행 (또는 .venv/bin/python 직접 사용)
-source .venv/bin/activate
+# 모노레포 루트에서 실행. crawl_scheduler 내부 import가 crawler.src.* 형태이므로
+# 루트가 Python 경로에 있어야 한다.
+source crawler/.venv/bin/activate  # 또는 .venv/bin/python 직접 지정
 
 # 가장 단순한 형태 — 기본 60분 주기, 운영 profile 사용
 REDIS_URL=redis://localhost:6379 \

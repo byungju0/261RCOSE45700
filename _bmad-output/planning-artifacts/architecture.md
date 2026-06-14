@@ -524,44 +524,37 @@ tracker/
 ├── crawler/                           # FR1-FR10: 수집 + 전처리
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── .env.example
 │   └── src/
-│       ├── main.py
-│       ├── config/
-│       │   └── redis_config.py        # Redis 연결 설정 (DB0, DB1)
+│       ├── crawl4ai_crawler.py        # crawl4ai 래퍼 (BrowserConfig + stealth, PIVOT 2026-05-19)
+│       ├── storage.py                 # PostStorage (disk + S3)
+│       ├── s3_uploader.py             # S3 업로드 (boto3, IAM 역할)
 │       ├── scheduler/                 # FR1, FR28
-│       │   ├── crawl_scheduler.py     # APScheduler (CRAWL_INTERVAL_MINUTES)
-│       │   └── trigger_listener.py    # FR6: Redis pub/sub 수신 (crawl:trigger)
-│       ├── sites/                     # FR1: 사이트별 크롤러
-│       │   ├── base_site.py
-│       │   ├── tailstar.py
-│       │   ├── ptt.py
-│       │   └── tieba.py
-│       ├── browser/                   # FR2, FR3
-│       │   ├── stealth_browser.py
-│       │   └── flaresolverr.py
-│       ├── proxy/                     # NFR15: ProxyProvider 추상화
-│       │   ├── proxy_provider.py      # Protocol/ABC 인터페이스
-│       │   └── proxy_broker.py        # ProxyBroker 구현체
-│       ├── storage/                   # FR5
-│       │   └── s3_uploader.py
-│       ├── preprocessor/              # FR7-FR10 (2026-05-19 PIVOT — 컴포넌트 재구성)
+│       │   ├── crawl_scheduler.py     # CrawlPipeline + APScheduler (CRAWL_INTERVAL_MINUTES)
+│       │   ├── trigger_listener.py    # FR6: Redis pub/sub 수신 (crawl:trigger)
+│       │   ├── candidate_scoring.py   # 후보 URL 우선순위 점수 계산
+│       │   ├── crawl_job_progress.py  # 크롤 진행 상태 추적 (Redis)
+│       │   └── healthcheck.py
+│       ├── sites/                     # FR1: SiteConfig 레지스트리 (PIVOT 2026-05-19)
+│       │   └── registry.py            # SITES dict + SiteConfig dataclass + 헬퍼
+│       │   # (제거됨) base_site.py / tailstar.py / ptt.py / tieba.py
+│       │   # → SiteConfig 필드 기반 레지스트리로 통합
+│       │   # (제거됨) browser/ — crawl4ai_crawler.py로 흡수
+│       │   # (제거됨) proxy/ — SiteConfig.proxy 필드로 대체
+│       ├── sources/                   # 검색엔진형 소스 (PIVOT 2026-06)
+│       │   └── github_source.py       # GitHub REST API 검색 통합
+│       │   # (계획됨) reddit / bing / duckduckgo_cn 등 — deferred
+│       ├── preprocessor/              # FR7-FR10
 │       │   ├── language_detector.py
-│       │   ├── dedup_checker.py       # Redis DB1 — fit_markdown SHA-256 content dedup
-│       │   ├── url_dedup_checker.py   # 2026-05-19 신규 — Redis ZSET cross-run URL dedup (TTL 7일). 본문 fetch 전 차단 계층
-│       │   ├── content_validator.py   # 2026-05-19 신규 — 본문 품질 8-kind 가드 (real/sticky/auth_wall/captcha/empty/short/error/unknown). 위양성 방지 게이트. 불법 콘텐츠 분류는 Epic 3 VARCO LLM 담당
-│       │   └── serializer.py          # 2026-05-19 신규 — CrawlEvent 직렬화 전담
-│       │   # (제거됨) html_parser.py — crawl4ai의 PruningContentFilter가 흡수
-│       │   # (제거됨) keyword_filter.py — title 단계는 SiteConfig.title_keywords 필드, 본문 키워드는 Epic 3 VARCO LLM 위임
-│       ├── search/                    # 2026-05-19 PIVOT 신설 — Stories 2-8~2-12 검색엔진 트랙용 (Epic 3 완료 후 착수)
-│       │   ├── search_engine_config.py # SearchEngineConfig (2-hop: query → SERP → 외부 링크)
-│       │   └── adapters/              # github / reddit / bing / duckduckgo_cn / facebook / baidu / sogou / bilibili
+│       │   ├── dedup_checker.py       # Redis DB1 — SHA-256 content dedup
+│       │   ├── url_dedup_checker.py   # Redis ZSET cross-run URL dedup (TTL 7일)
+│       │   ├── content_validator.py   # 8-kind 가드 (real/sticky/auth_wall/captcha/empty/short/error/unknown)
+│       │   └── serializer.py          # CrawlResult → CrawlEvent 직렬화
 │       └── queue/
 │           └── redis_publisher.py     # posts:queue LPUSH (DB0)
 │   ├── scripts/
-│   │   └── smoke_each_site.py         # 2026-05-19 신규 — 사이트별 smoke 검증 스크립트
-│   ├── README.md                      # 2026-05-19 신규 — crawler 아키텍처 + 사용법
-│   ├── STATUS.md                      # 2026-05-19 신규 — Known issues + 사이트별 상태
+│   │   └── smoke_each_site.py
+│   ├── README.md
+│   ├── STATUS.md
 │   └── tests/
 │       ├── conftest.py
 │       ├── unit/
@@ -826,7 +819,7 @@ dashboard/src/api/detections.ts (TanStack Query 60초 폴링)
 
 | FR 카테고리 | 주요 파일 |
 |-----------|---------|
-| FR1-FR6 (수집) | `crawler/src/scheduler/`, `crawler/src/sites/`, `crawler/src/browser/` |
+| FR1-FR6 (수집) | `crawler/src/scheduler/`, `crawler/src/sites/`, `crawler/src/crawl4ai_crawler.py` |
 | FR7-FR10 (전처리) | `crawler/src/preprocessor/` |
 | FR11-FR16 (AI 탐지) | `detection/src/pipeline/`, `detection/src/consumer/`, `detection/src/rate_limit/` |
 | FR17-FR22 (탐지 조회) | `api/.../DetectionController.java`, `dashboard/src/pages/DetectionList/`, `DetectionDetail/` |

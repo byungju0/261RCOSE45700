@@ -40,7 +40,7 @@ Community sites
   -> React dashboard
 ```
 
-운영 환경은 단일 EC2에서 Redis, Tor, FlareSolverr, crawler, detection, API, dashboard, Caddy 8개 컨테이너를 Docker Compose로 실행합니다. 자세한 구조와 운영 결정은 [Architecture](https://github.com/byungju0/261RCOSE45700/wiki/Architecture-Overview)와 [docs/deployment.md](docs/deployment.md)를 참고하세요.
+운영 환경은 단일 EC2에서 Redis, Tor, crawler, detection, API, dashboard, Caddy 7개 컨테이너를 Docker Compose로 실행합니다. 자세한 구조와 운영 결정은 [Architecture](https://github.com/byungju0/261RCOSE45700/wiki/Architecture-Overview)와 [docs/deployment.md](docs/deployment.md)를 참고하세요.
 
 ## 기술 스택
 
@@ -69,6 +69,7 @@ git clone https://github.com/byungju0/261RCOSE45700.git
 cd 261RCOSE45700
 
 # Redis + PostgreSQL
+# infra/.env.example은 gitignore 대상입니다. 팀에서 별도 공유하는 파일을 infra/.env로 복사하세요.
 cp infra/.env.example infra/.env
 docker compose -f infra/docker-compose.yml up -d
 
@@ -80,7 +81,6 @@ crawler/.venv/bin/playwright install chromium
 # detection
 python3 -m venv detection/.venv
 detection/.venv/bin/pip install -r detection/requirements.txt
-cp detection/.env.example detection/.env
 
 # api
 cd api && ./gradlew build && cd ..

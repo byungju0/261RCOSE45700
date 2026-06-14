@@ -1,5 +1,7 @@
 # Cloudflare 우회 가능성 검증 — 스파이크 결과 (Story 2.1)
 
+> **[2026-05-19 PIVOT 메모]** 이 스파이크 결정 후 `crawler/src/browser/stealth_browser.py` 구현은 `crawl4ai_crawler.py`로 흡수됐습니다. crawl4ai가 내부적으로 Playwright + BrowserConfig(stealth) 를 관리하므로 브라우저 추상화 계층이 제거됐습니다. 본 문서는 역사 기록으로 유지합니다.
+
 - **스파이크 일자**: 2026-04-27
 - **타임박스**: 2 영업일(16시간) — 본 측정은 1회 세션 내 완료
 - **결정**: ✅ **Playwright + `playwright-stealth` 채택** (`crawler/src/browser/stealth_browser.py`)

@@ -65,11 +65,11 @@ src/
 ├── api/            # axios 클라이언트 + TanStack Query hooks (useDetectionsQuery, useStatsSuspenseQuery 등)
 ├── components/
 │   ├── ui/         # shadcn primitives (button, card, dialog, drawer, select, table, tabs, sonner, skeleton, kbd)
-│   ├── charts/     # Recharts 래퍼 (BarChart, LineChart, PieChart, colors)
-│   └── tracker/    # 도메인 컴포넌트 (DetectionRow, DetectionCard, BilingualPanel, ManualCrawlButton, ConfidenceBadge, TypeIcon, ChartCard, EmptyState, ShortcutsCheatsheet, RecentAlertList, labels)
+│   ├── charts/     # Recharts 래퍼 (BarChart, LineChart, PieChart, colors, tooltip)
+│   └── tracker/    # 도메인 컴포넌트 (DetectionRow, DetectionCard, BilingualPanel, ManualCrawlButton, ConfidenceBadge, TypeIcon, ChartCard, EmptyState, ShortcutsCheatsheet, RecentAlertList, AgentRunTrace, RangeDaysInput, labels)
 ├── layouts/        # RootLayout / Sidebar(햄버거 drawer) / Topbar / PageContainer / RightRail
 ├── pages/          # Dashboard / DetectionList / DetectionDetail / Notifications / Stats (route-level lazy)
-├── lib/            # detectionFilter / filterOptions / severity / statsView / time / shortcuts / sources / useDetectionFilter / useIsMobile / utils / crawlProgress
+├── lib/            # detectionFilter / filterOptions / rangeDays / severity / statsView / time / shortcuts / sources / useDetectionFilter / useIsMobile / utils
 ├── mocks/          # MSW v2 handlers + dev fixtures
 ├── main.tsx        # createRoot + QueryClientProvider + GlobalShortcutProvider + RouterProvider
 └── index.css       # Tailwind v4 entry + CSS variable tokens (light/dark)
@@ -90,7 +90,7 @@ src/
 - API 응답은 camelCase (Jackson). Spring `ProblemDetail` (RFC 9457) 기반 에러를 `ErrorBoundary` 에서 사용자 메시지로 변환.
 - `X-Correlation-ID` 응답 헤더는 axios interceptor 가 sessionStorage 에 캐시 → 사용자가 신고 시 콘솔에서 식별 가능.
 - 60초 폴링은 `useQuery({ refetchInterval: 60_000 })` 기본값. 대시보드 / 목록 모두 동일.
-- `/stats?period=weekly|monthly`는 기간별 분포와 추이를 같은 기준으로 반환한다.
+- `/stats?days=7` 또는 `/stats?days=30`으로 기간별 분포와 추이를 반환한다. `days` 미설정 시 전체 기간.
 - `/detections`는 `date` 또는 `range=7d|30d` 기간 필터를 지원한다. `date`가 있으면 `range`보다 우선한다.
 
 ## 모바일 지원 메모
