@@ -9,7 +9,7 @@
 사용:
     cd crawler_test
     uv run python scripts/smoke_each_site.py
-    uv run python scripts/smoke_each_site.py inven_maple   # 특정 사이트만
+    uv run python scripts/smoke_each_site.py inven_lineage_classic   # 특정 사이트만
 """
 from __future__ import annotations
 

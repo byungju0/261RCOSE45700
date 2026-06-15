@@ -123,15 +123,15 @@ async def test_probe_site_batch_uses_fetch_many_with_site_options():
 
     candidates = [
         _candidate(
-            site_id="inven_maple",
-            url="https://www.inven.co.kr/board/maple/2298/1",
+            site_id="inven_lineage_classic",
+            url="https://www.inven.co.kr/board/lineageclassic/6482/1",
             selected=True,
             bucket="P2",
             score=20,
         ),
         _candidate(
-            site_id="inven_maple",
-            url="https://www.inven.co.kr/board/maple/2298/2",
+            site_id="inven_lineage_classic",
+            url="https://www.inven.co.kr/board/lineageclassic/6482/2",
             selected=True,
             bucket="P3",
             score=5,
@@ -139,7 +139,7 @@ async def test_probe_site_batch_uses_fetch_many_with_site_options():
     ]
     crawler = FakeCrawler()
 
-    rows = await _probe_site_batch(crawler, "inven_maple", candidates)
+    rows = await _probe_site_batch(crawler, "inven_lineage_classic", candidates)
 
     assert [row["url"] for row in rows] == [c.url for c in candidates]
     assert all(row["ok"] for row in rows)

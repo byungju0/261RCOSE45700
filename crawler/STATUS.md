@@ -86,7 +86,6 @@
 
 | site_id | 지역 | 보드 | NC real/run | 비고 |
 |---|---|---|---|---|
-| `inven_maple` | KR | inven /board/maple/2298 | 5/5 | 비교군 (NEXON, NC 아님) |
 | `inven_lineage_classic` | KR | inven /board/lineageclassic/6482 | 5/5 | NC |
 | `ptt` | TW | ptt /bbs/Lineage/ | 5/5 | over18 폼 js_code 자동 클릭 |
 | `bahamut_lineage` | TW | bsn=842 | 3/5 | 天堂Lineage |
