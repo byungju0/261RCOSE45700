@@ -202,7 +202,7 @@ function ActivityItem({
         style={{ background: dotBg }}
       />
       <div className="min-w-0">
-        <div style={{ color: 'var(--fg-2)', lineHeight: 1.5 }}>
+        <div className="text-[0.95rem] font-medium" style={{ color: 'var(--fg)', lineHeight: 1.5 }}>
           {tag && (
             <span
               className="font-mono mr-1.5 inline-block rounded-[3px] px-1.5 py-px text-xs font-semibold uppercase"
@@ -218,9 +218,9 @@ function ActivityItem({
           {headline}
         </div>
         {details.length > 0 && (
-          <div className="mt-0.5 space-y-0.5" style={{ color: 'var(--fg-3)', lineHeight: 1.45 }}>
+          <div className="mt-1 space-y-0.5" style={{ color: 'var(--fg)', lineHeight: 1.5 }}>
             {details.map((line) => (
-              <div key={line} className="text-xs">{line}</div>
+              <div key={line} className="text-sm">{line}</div>
             ))}
           </div>
         )}
