@@ -115,6 +115,13 @@ def _resolve_image_url(image: str) -> str | None:
         # 프로젝트 루트 기준 상대 경로 허용. detection/src/pipeline → parents[3] == root.
         project_root = Path(__file__).resolve().parents[3]
         path = (project_root / image).resolve()
+        if not path.is_relative_to(project_root):
+            # "../../etc/passwd" 류 입력이 resolve() 후에도 project_root 밖으로 빠져나간 경우.
+            _logger.warning(
+                "이미지 경로가 프로젝트 루트 밖을 가리킴: 스킵",
+                extra={"correlation_id": "", "service": _SERVICE_NAME, "image": image},
+            )
+            return None
     if not path.exists():
         _logger.warning(
             "이미지 파일 없음 — 스킵",
