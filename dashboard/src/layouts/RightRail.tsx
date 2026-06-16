@@ -74,17 +74,22 @@ export function RightRail() {
 }
 
 function sourceStatus(lastCrawledAt: string | null): { label: string; color: string } {
-  if (!lastCrawledAt) return { label: 'UNKNOWN', color: 'var(--fg-3)' };
+  if (!lastCrawledAt) return { label: '없음', color: 'var(--fg-3)' };
   const diffH = (Date.now() - new Date(lastCrawledAt).getTime()) / 3_600_000;
-  if (diffH < 2)   return { label: 'ACTIVE',  color: 'var(--safe)' };
-  if (diffH < 24)  return { label: 'OK',      color: 'var(--safe)' };
-  if (diffH < 168) return { label: 'STALE',   color: 'var(--warn, #f59e0b)' };
-  return             { label: 'OLD',    color: 'var(--fg-3)' };
+  if (diffH < 2)   return { label: '방금', color: 'var(--safe)' };
+  if (diffH < 24)  return { label: '오늘', color: 'var(--safe)' };
+  if (diffH < 168) return { label: '이번 주', color: 'var(--warn, #f59e0b)' };
+  return             { label: '오래됨', color: 'var(--fg-3)' };
 }
 
 function dataFreshnessStatus(lastIngestedAt: string | null): { label: string; color: string } {
-  if (!lastIngestedAt) return { label: 'NO DATA', color: 'var(--fg-3)' };
+  if (!lastIngestedAt) return { label: '없음', color: 'var(--fg-3)' };
   return sourceStatus(lastIngestedAt);
+}
+
+function relativeActionTime(value: string | null, action: '확인' | '저장'): string {
+  if (!value) return action === '확인' ? '확인 기록 없음' : '저장 데이터 없음';
+  return `${formatRelativeTime(value)} ${action}`;
 }
 
 const ACTIVITY_META: Record<string, { variant: ActivityVariant; tag?: string }> = {
@@ -174,9 +179,7 @@ function SourceHealthRow({ source }: { source: SourceHealthItem }) {
   const title = source.lastCrawledAt
     ? `마지막 크롤 시도: ${new Date(source.lastCrawledAt).toLocaleString('ko-KR')}`
     : '크롤 시도 이력 없음';
-  const sub = source.lastCrawledAt
-    ? `fetch ${source.fetched} · queue ${source.queued} · skip ${source.validatorSkipped} · fail ${source.failed}`
-    : 'run 없음';
+  const sub = relativeActionTime(source.lastCrawledAt, '확인');
   return (
     <div
       className="grid items-center border-b last:border-b-0"
@@ -197,7 +200,7 @@ function SourceHealthRow({ source }: { source: SourceHealthItem }) {
           {sub}
         </span>
       </span>
-      <span className="font-mono text-right" style={{ color, fontSize: 'var(--text-base-mono)' }}>
+      <span className="text-right text-xs font-semibold whitespace-nowrap" style={{ color }}>
         {label}
       </span>
     </div>
@@ -209,6 +212,7 @@ function DataFreshnessRow({ source }: { source: SourceHealthItem }) {
   const title = source.lastIngestedAt
     ? `마지막 저장 데이터: ${new Date(source.lastIngestedAt).toLocaleString('ko-KR')}`
     : '저장된 데이터 없음';
+  const sub = relativeActionTime(source.lastIngestedAt, '저장');
   return (
     <div
       className="grid items-center border-b last:border-b-0"
@@ -221,10 +225,15 @@ function DataFreshnessRow({ source }: { source: SourceHealthItem }) {
       title={title}
     >
       <span className="size-2.5 rounded-full" style={{ background: color }} />
-      <span className="font-mono truncate" style={{ color: 'var(--fg-2)', fontSize: 'var(--text-base-mono)' }}>
-        {source.siteName}
+      <span className="min-w-0">
+        <span className="font-mono block truncate" style={{ color: 'var(--fg-2)', fontSize: 'var(--text-base-mono)' }}>
+          {source.siteName}
+        </span>
+        <span className="font-mono block truncate text-[0.65rem]" style={{ color: 'var(--fg-3)' }}>
+          {sub}
+        </span>
       </span>
-      <span className="font-mono text-right" style={{ color, fontSize: 'var(--text-base-mono)' }}>
+      <span className="text-right text-xs font-semibold whitespace-nowrap" style={{ color }}>
         {label}
       </span>
     </div>
