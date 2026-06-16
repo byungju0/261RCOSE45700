@@ -144,9 +144,13 @@ class CrawlJobProgressStore:
             ex=_JOB_TTL_SECONDS * 7,
         )
 
-    def set_running(self) -> None:
-        """크롤링 시작 시 호출. deploy.yml 사전 drain 체크에서 이 key를 폴링한다."""
-        self._redis.set(REDIS_KEY_CRAWLER_RUNNING, "1", ex=3600)
+    def set_running(self, trigger: str = "schedule") -> None:
+        """크롤링 시작 시 호출. deploy.yml 사전 drain 체크에서 이 key를 폴링한다.
+
+        trigger: "manual" | "schedule" — 값 자체에 트리거 종류를 저장해 API가
+        구분해서 보여줄 수 있게 한다. deploy.yml 은 값 유무만 보므로 호환된다.
+        """
+        self._redis.set(REDIS_KEY_CRAWLER_RUNNING, trigger, ex=3600)
 
     def clear_running(self) -> None:
         self._redis.delete(REDIS_KEY_CRAWLER_RUNNING)

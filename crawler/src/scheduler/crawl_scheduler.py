@@ -105,6 +105,11 @@ _DETAIL_CHALLENGE_COOLDOWN_SECONDS = max(
 _INTER_SITE_DELAY_SECONDS = float(os.environ.get("INTER_SITE_DELAY_SECONDS", "15"))
 _INTER_BOARD_DELAY_SECONDS = float(os.environ.get("INTER_BOARD_DELAY_SECONDS", "3"))
 
+# 스케줄 run은 job_id가 없어서(="") progress_store가 진행률을 기록하지 않았다 —
+# 대시보드가 자동 크롤링 진행률도 볼 수 있도록 고정된 pseudo job id로 같은
+# crawl:jobs: 추적 메커니즘을 재사용한다. UUID와 충돌할 일이 없는 고정 문자열.
+_SCHEDULE_PROGRESS_JOB_ID = "schedule"
+
 
 def _jittered(base: float, jitter_ratio: float = 0.25) -> float:
     """base * (1 ± jitter_ratio) 안에서 무작위 값."""
@@ -1375,10 +1380,11 @@ class CrawlScheduler:
     async def _run_locked(self, command: CrawlTriggerCommand | None = None) -> None:
         # APScheduler 잡 + 수동 trigger 양쪽에서 호출되는 단일 진입점.
         job_id = command.job_id if command is not None else ""
+        # 스케줄 run도 같은 progress 추적(crawl:jobs:schedule)을 쓰도록 고정 id 부여.
+        progress_job_id = job_id or _SCHEDULE_PROGRESS_JOB_ID
         if await asyncio.to_thread(self._progress_store.is_quiet):
             message = "배포 진행 중이라 새 크롤링 시작을 보류했습니다."
-            if job_id:
-                self._progress_store.mark_skipped(job_id, message=message)
+            self._progress_store.mark_skipped(progress_job_id, message=message)
             _logger.info(
                 "crawler quiet — 이번 호출 스킵",
                 extra={
@@ -1388,11 +1394,10 @@ class CrawlScheduler:
             )
             return
         if self._run_lock.locked():
-            if job_id:
-                self._progress_store.mark_skipped(
-                    job_id,
-                    message="이미 다른 크롤링이 실행 중입니다.",
-                )
+            self._progress_store.mark_skipped(
+                progress_job_id,
+                message="이미 다른 크롤링이 실행 중입니다.",
+            )
             _logger.info(
                 "이미 실행 중 — 이번 호출 스킵",
                 extra={
@@ -1404,11 +1409,10 @@ class CrawlScheduler:
         activity: tuple[str, str] | None = None
         exc_to_reraise: Exception | None = None
         async with self._run_lock:
-            await asyncio.to_thread(self._progress_store.set_running)
+            await asyncio.to_thread(self._progress_store.set_running, "manual" if job_id else "schedule")
             try:
-                stats = await self._pipeline.run(job_id=job_id)
-                if job_id:
-                    self._progress_store.mark_succeeded(job_id)
+                stats = await self._pipeline.run(job_id=progress_job_id)
+                self._progress_store.mark_succeeded(progress_job_id)
                 trigger = "수동" if job_id else "스케줄"
                 duplicate = stats.skipped_seen_url + stats.skipped_dedup
                 skipped = stats.skipped_empty + stats.skipped_sticky + stats.skipped_blocked + stats.skipped_unknown
@@ -1424,8 +1428,7 @@ class CrawlScheduler:
                     f"중복 제외 {duplicate}건, 기타 제외 {skipped}건, 실패 {stats.failed}건",
                 )
             except Exception as exc:
-                if job_id:
-                    self._progress_store.mark_failed(job_id, message=str(exc))
+                self._progress_store.mark_failed(progress_job_id, message=str(exc))
                 activity = ("CRAWL_FAILED", f"크롤링 실패: {exc}")
                 exc_to_reraise = exc
             finally:

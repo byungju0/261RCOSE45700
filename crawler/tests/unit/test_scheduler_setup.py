@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from apscheduler.triggers.cron import CronTrigger
@@ -133,6 +133,46 @@ class TestCrawlerQuietMode:
         )
         scheduler._progress_store.set_running.assert_not_called()
         scheduler._pipeline.run.assert_not_called()
+
+
+class TestScheduledRunProgressTracking:
+    """스케줄 run(command=None)도 고정 pseudo job id로 progress를 기록하는지."""
+
+    async def _make_scheduler(self):
+        with patch("crawler.src.scheduler.crawl_scheduler.redis") as mock_redis, \
+             patch("crawler.src.scheduler.crawl_scheduler.Crawl4AICrawler"), \
+             patch("crawler.src.scheduler.crawl_scheduler.PostStorage"):
+            mock_redis.from_url.return_value = MagicMock()
+            scheduler = CrawlScheduler()
+        scheduler._progress_store = MagicMock()
+        scheduler._progress_store.is_quiet.return_value = False
+        scheduler._pipeline = MagicMock()
+        scheduler._pipeline.run = AsyncMock(return_value=scheduler_module.PipelineStats())
+        return scheduler
+
+    async def test_schedule_run_uses_pseudo_job_id_for_pipeline_run(self):
+        scheduler = await self._make_scheduler()
+
+        await scheduler._run_locked(None)
+
+        scheduler._pipeline.run.assert_called_once_with(job_id="schedule")
+
+    async def test_schedule_run_marks_succeeded_with_pseudo_job_id(self):
+        scheduler = await self._make_scheduler()
+
+        await scheduler._run_locked(None)
+
+        scheduler._progress_store.mark_succeeded.assert_called_once_with("schedule")
+
+    async def test_schedule_run_skipped_while_locked_marks_pseudo_job_id(self):
+        scheduler = await self._make_scheduler()
+        async with scheduler._run_lock:
+            await scheduler._run_locked(None)
+
+        scheduler._progress_store.mark_skipped.assert_called_once_with(
+            "schedule",
+            message="이미 다른 크롤링이 실행 중입니다.",
+        )
 
 
 class TestUrlDedupSharedInstance:
