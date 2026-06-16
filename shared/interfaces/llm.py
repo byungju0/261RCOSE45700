@@ -18,6 +18,21 @@ ALLOWED_DETECTION_TYPES: frozenset[str] = frozenset({
 })
 
 
+def validate_detection_fields(type_value: object, confidence: object, *, context: str = "") -> float:
+    """type enum(9종) + confidence 범위(0~1) 검증, 정규화된 confidence(float) 반환.
+
+    llm_classifier / llm_client / triage_agent가 각자 레이어에서 동일 검증을 반복 수행하는
+    의도된 다중 방어(multi worker / mock 객체 / 향후 backend 교체 대비)이므로, 호출부는 그대로 두고
+    검증 로직만 여기로 모은다.
+    """
+    prefix = f"{context} " if context else ""
+    if type_value not in ALLOWED_DETECTION_TYPES:
+        raise ValueError(f"invalid {prefix}type: {type_value}")
+    if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
+        raise ValueError(f"{prefix}confidence out of range: {confidence}")
+    return float(confidence)
+
+
 @dataclass
 class LLMResponse:
     """OpenAI 멀티모달 단일 호출 응답.

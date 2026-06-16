@@ -14,7 +14,7 @@ import os
 
 from detection.src.agents.contracts import TriageResult
 from detection.src.pipeline.llm_client import build_system_prompt
-from shared.interfaces.llm import ALLOWED_DETECTION_TYPES
+from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, validate_detection_fields
 from shared.structured_logger import get_logger
 
 _SERVICE_NAME = os.environ.get("SERVICE_NAME", "detection")
@@ -81,15 +81,11 @@ class TriageAgent:
         )
 
         type_value = parsed.get("type")
-        if type_value not in ALLOWED_DETECTION_TYPES:
-            raise ValueError(f"invalid triage type: {type_value}")
-        confidence = parsed.get("confidence")
-        if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
-            raise ValueError(f"triage confidence out of range: {confidence}")
+        confidence = validate_detection_fields(type_value, parsed.get("confidence"), context="triage")
 
         return TriageResult(
             type=str(type_value),
-            confidence=float(confidence),
+            confidence=confidence,
             game_context=str(parsed.get("game_context", "")),
             reason_ko=str(parsed.get("reason_ko", "")),
             translated_text_ko=parsed.get("translated_text_ko"),

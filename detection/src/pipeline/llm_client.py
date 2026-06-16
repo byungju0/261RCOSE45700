@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from detection.src.prompts.registry import get_domain_guide, get_type_guidance
-from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse, RateLimitError
+from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMResponse, RateLimitError, validate_detection_fields
 from shared.structured_logger import get_logger
 
 try:
@@ -326,11 +326,7 @@ class LLMClient:
 
         # response_format=json_schema strict가 enforce하지만 방어적으로 검증.
         type_value = parsed.get("type")
-        if type_value not in ALLOWED_DETECTION_TYPES:
-            raise ValueError(f"invalid type: {type_value}")
-        confidence = parsed.get("confidence")
-        if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
-            raise ValueError(f"confidence out of range: {confidence}")
+        confidence = validate_detection_fields(type_value, parsed.get("confidence"))
 
         usage = getattr(resp, "usage", None)
         input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
@@ -341,7 +337,7 @@ class LLMClient:
 
         return LLMResponse(
             type=str(type_value),
-            confidence=float(confidence),
+            confidence=confidence,
             reason_ko=str(parsed.get("reason_ko", "")),
             translated_text_ko=parsed.get("translated_text_ko"),
             image_observed=bool(parsed.get("image_observed", False)),

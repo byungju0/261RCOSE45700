@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timezone
 
 from detection.src.rate_limit.token_bucket import TokenBucket
-from shared.interfaces.llm import ALLOWED_DETECTION_TYPES, LLMInterface, LLMResponse
+from shared.interfaces.llm import LLMInterface, LLMResponse, validate_detection_fields
 from shared.structured_logger import get_logger
 
 _SERVICE_NAME = os.environ.get("SERVICE_NAME", "detection")
@@ -55,9 +55,6 @@ class LLMClassifier:
         self._bucket.acquire()
         result = self._llm.classify(text, images, source_id=source_id)
 
-        if result.type not in ALLOWED_DETECTION_TYPES:
-            raise ValueError(f"invalid type: {result.type}")
-        if not 0.0 <= result.confidence <= 1.0:
-            raise ValueError(f"confidence out of range: {result.confidence}")
+        validate_detection_fields(result.type, result.confidence)
 
         return result
