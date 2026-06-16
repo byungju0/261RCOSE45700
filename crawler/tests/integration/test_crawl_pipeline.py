@@ -838,6 +838,51 @@ async def test_pipeline_marks_seen_url_after_successful_enqueue():
     assert mock_url_dedup.mark_seen.call_args.args[0] == _TEST_URL
 
 
+def test_should_skip_post_marks_sticky_url_seen_permanently():
+    """sticky(공지) 글은 enqueue 안 되지만, 다음 스케줄에도 안 보도록 영구 dedup에 마킹한다."""
+    from crawler.src.preprocessor.url_dedup_checker import UrlDedupChecker
+
+    mock_url_dedup = MagicMock(spec=UrlDedupChecker)
+    pipeline, _, _ = _make_pipeline()
+    pipeline._url_dedup = mock_url_dedup
+
+    sticky_markdown = (
+        "作者 a\n看板 b\n標題 [公告] 공지\n時間 t\n"
+        "공지 본문을 충분히 길게 채워 _generic_guard 의 최소 길이 체크를 통과시킨다."
+    )
+    stats = scheduler_module.PipelineStats()
+
+    skipped = pipeline._should_skip_post(stats, "ptt", _TEST_URL, sticky_markdown, "cid")
+
+    assert skipped is True
+    assert stats.skipped_sticky == 1
+    mock_url_dedup.mark_seen.assert_called_once_with(_TEST_URL, correlation_id="cid")
+
+
+async def test_pipeline_does_not_refetch_same_url_across_board_pages_in_one_run():
+    """같은 사이클에서 다른 게시판 페이지가 동일 URL을 또 후보로 올려도 재fetch하지 않는다.
+
+    sticky 글이 페이지마다 동일하게 노출되는 경우(다음 스케줄에서도 매번 다시
+    fetch되던 실제 사례)를 in-run dedup으로 막는지 검증.
+    """
+    pipeline, _, _ = _make_pipeline(crawl_result=_make_crawl_result(_KEYWORD_TEXT))
+    inven = replace(SITES["inven_lineage_classic"], max_pages=2)
+
+    with patch(
+        "crawler.src.scheduler.crawl_scheduler.get_enabled_sites",
+        return_value={"inven_lineage_classic": inven},
+    ), patch(
+        "crawler.src.scheduler.crawl_scheduler._fetch_post_urls",
+        return_value=ListingResult(urls=[_TEST_URL], discovered_total=1, keyword_matched=0, keyword_unmatched=1),
+    ):
+        stats = await pipeline.run()
+
+    # 페이지 2개가 똑같이 _TEST_URL 을 후보로 올렸지만 fetch는 1회만.
+    assert pipeline._crawler.fetch.call_count == 1
+    assert stats.attempted == 1
+    assert stats.skipped_seen_url == 1
+
+
 async def test_pipeline_passes_site_options_to_crawler_fetch():
     """site.cookies / wait_for / headers / page_timeout / proxy 가 crawler.fetch 로 전달되는지."""
     custom_site = SITES["inven_lineage_classic"]

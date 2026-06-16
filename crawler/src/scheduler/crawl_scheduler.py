@@ -579,7 +579,7 @@ class PipelineStats:
     selected_p3: int = 0
     attempted: int = 0
     enqueued: int = 0
-    skipped_seen_url: int = 0        # cross-run URL dedup: 이미 다른 run 에서 처리됨
+    skipped_seen_url: int = 0        # 이미 본 URL — 다른 run(영구 dedup) 또는 같은 run의 다른 게시판 페이지(in-run dedup)
     skipped_dedup: int = 0           # 같은 본문 SHA256 중복
     skipped_empty: int = 0
     skipped_sticky: int = 0          # content_validator: 공지/导航/공식 행사 등
@@ -719,8 +719,14 @@ class CrawlPipeline:
         self._url_dedup = url_dedup
         self._progress_store = progress_store
         self._github_source = github_source
+        # run() 호출마다 초기화 — 같은 사이클 안에서 게시판 페이지를 넘기며 같은
+        # 글(공지/sticky 등)을 다시 fetch하지 않도록 하는 in-run 전용 dedup.
+        # url_dedup(영구, Redis)과 분리: 실패/차단처럼 일시적일 수 있는 스킵은
+        # 다음 스케줄에서 재시도할 수 있어야 하므로 영구 저장하지 않는다.
+        self._run_seen_urls: set[str] = set()
 
     async def run(self, *, job_id: str = "") -> PipelineStats:
+        self._run_seen_urls = set()
         stats = PipelineStats()
         sites = get_enabled_sites()
         total_sites = len(sites)
@@ -1029,6 +1035,11 @@ class CrawlPipeline:
         for candidate in candidates:
             cid = generate()
             post_url = candidate.url
+            if post_url in self._run_seen_urls:
+                # 같은 사이클에서 다른 게시판 페이지가 이미 이 URL을 시도함
+                # (예: sticky 글이 여러 페이지에 동일하게 노출되는 경우).
+                stats.skipped_seen_url += 1
+                continue
             if self._url_dedup is not None and self._url_dedup.has_seen(
                 post_url,
                 correlation_id=cid,
@@ -1195,6 +1206,9 @@ class CrawlPipeline:
     ) -> None:
         post_url = outcome.post_url
         cid = outcome.correlation_id
+        # 결과(성공/스킵/실패)와 무관하게 이번 사이클에서 이미 처리 시도했음을
+        # 기록 — 다른 게시판 페이지에 같은 글이 또 노출돼도 재시도하지 않는다.
+        self._run_seen_urls.add(post_url)
         if outcome.error is not None:
             stats.failed += 1
             _logger.error(
@@ -1276,6 +1290,10 @@ class CrawlPipeline:
             return False
         if validation.kind == "sticky":
             stats.skipped_sticky += 1
+            # 공지/고정글은 게시판이 몇 페이지든 항상 동일하게 노출되고 다시
+            # 봐도 사용자 글이 될 일이 없음 — 영구 dedup에 마킹해 다음 스케줄에서도
+            # 재시도하지 않게 한다 (failed/blocked 등 일시적일 수 있는 스킵과 다름).
+            self._mark_url_seen_permanently(post_url, correlation_id)
         elif validation.kind in ("auth_wall", "captcha", "error"):
             stats.skipped_blocked += 1
         elif validation.kind in ("empty", "short"):
@@ -1303,6 +1321,9 @@ class CrawlPipeline:
                 extra={"correlation_id": correlation_id, "service": _SERVICE_NAME},
                 exc_info=True,
             )
+        self._mark_url_seen_permanently(post_url, correlation_id)
+
+    def _mark_url_seen_permanently(self, post_url: str, correlation_id: str) -> None:
         if self._url_dedup is None:
             return
         try:
