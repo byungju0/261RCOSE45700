@@ -7,6 +7,7 @@ interface RangeDaysInputProps {
   ariaLabel: string;
   disabled?: boolean;
   className?: string;
+  commitOnChange?: boolean;
 }
 
 export function RangeDaysInput({
@@ -15,6 +16,7 @@ export function RangeDaysInput({
   ariaLabel,
   disabled = false,
   className = '',
+  commitOnChange = false,
 }: RangeDaysInputProps) {
   const [draft, setDraft] = useState(String(value));
   const [prevValue, setPrevValue] = useState(value);
@@ -24,13 +26,13 @@ export function RangeDaysInput({
     setDraft(String(value));
   }
 
-  const commit = () => {
-    if (draft.trim() === '') {
+  const commit = (nextDraft = draft) => {
+    if (nextDraft.trim() === '') {
       setDraft(String(value));
       return;
     }
 
-    const next = clampRangeDays(Number(draft));
+    const next = clampRangeDays(Number(nextDraft));
     setDraft(String(next));
     onCommit(next);
   };
@@ -51,8 +53,14 @@ export function RangeDaysInput({
         pattern="[0-9]*"
         value={draft}
         disabled={disabled}
-        onChange={(event) => setDraft(event.target.value.replace(/\D/g, ''))}
-        onBlur={commit}
+        onChange={(event) => {
+          const nextDraft = event.target.value.replace(/\D/g, '');
+          setDraft(nextDraft);
+          if (commitOnChange && nextDraft !== '') {
+            onCommit(clampRangeDays(Number(nextDraft)));
+          }
+        }}
+        onBlur={() => commit()}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.currentTarget.blur();

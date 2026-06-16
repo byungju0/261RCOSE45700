@@ -194,9 +194,9 @@ function PeriodControl({
           value={value}
           onCommit={(next) => {
             onChange(next);
-            setCustomMode(false);
           }}
           ariaLabel="대시보드 기간 일수"
+          commitOnChange
         />
       </div>
     );
