@@ -20,4 +20,8 @@ public record CrawlPipelineStatsResponse(
         int skippedUnknown,
         int failed,
         String recordedAt
-) {}
+) {
+    public static CrawlPipelineStatsResponse empty() {
+        return new CrawlPipelineStatsResponse(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+    }
+}

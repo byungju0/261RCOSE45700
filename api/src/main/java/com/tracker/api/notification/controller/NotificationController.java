@@ -3,6 +3,7 @@ package com.tracker.api.notification.controller;
 import com.tracker.api.notification.dto.*;
 import com.tracker.api.notification.service.NotificationChannelService;
 import com.tracker.api.notification.service.NotificationRuleService;
+import com.tracker.api.util.CorrelationIdUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,7 +13,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -35,7 +35,7 @@ public class NotificationController {
             @Valid @RequestBody NotificationChannelRequest body,
             HttpServletRequest request) {
         return ResponseEntity.status(201)
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(channelService.createChannel(body));
     }
 
@@ -59,7 +59,7 @@ public class NotificationController {
             @Valid @RequestBody NotificationRuleRequest body,
             HttpServletRequest request) {
         return ResponseEntity.status(201)
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(ruleService.createRule(body));
     }
 
@@ -71,12 +71,7 @@ public class NotificationController {
 
     private <T> ResponseEntity<T> ok(T body, HttpServletRequest request) {
         return ResponseEntity.ok()
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(body);
-    }
-
-    private static String resolveCorrelationId(HttpServletRequest request) {
-        String id = request.getHeader("X-Correlation-ID");
-        return (id != null && !id.isBlank()) ? id : UUID.randomUUID().toString();
     }
 }

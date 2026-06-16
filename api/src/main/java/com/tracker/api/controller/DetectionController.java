@@ -5,6 +5,7 @@ import com.tracker.api.dto.DetectionListResponse;
 import com.tracker.api.dto.DetectionResponse;
 import java.util.List;
 import com.tracker.api.service.DetectionService;
+import com.tracker.api.util.CorrelationIdUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +17,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
@@ -43,7 +43,7 @@ public class DetectionController {
 
         var result = detectionService.getDetections(date, range, site, type, lang, tier, page, size);
         return ResponseEntity.ok()
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(result);
     }
 
@@ -55,7 +55,7 @@ public class DetectionController {
 
         var result = detectionService.getDetectionById(id);
         return ResponseEntity.ok()
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(result);
     }
 
@@ -67,12 +67,7 @@ public class DetectionController {
 
         var result = detectionService.getAgentRuns(id);
         return ResponseEntity.ok()
-                .header("X-Correlation-ID", resolveCorrelationId(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(result);
-    }
-
-    private static String resolveCorrelationId(HttpServletRequest request) {
-        String id = request.getHeader("X-Correlation-ID");
-        return (id != null && !id.isBlank()) ? id : UUID.randomUUID().toString();
     }
 }

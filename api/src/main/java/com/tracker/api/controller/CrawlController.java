@@ -4,6 +4,7 @@ import com.tracker.api.dto.CrawlTriggerResponse;
 import com.tracker.api.dto.CrawlJobStatusResponse;
 import com.tracker.api.dto.CrawlPipelineStatsResponse;
 import com.tracker.api.service.CrawlTriggerService;
+import com.tracker.api.util.CorrelationIdUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
@@ -28,8 +28,7 @@ public class CrawlController {
     @Operation(summary = "수동 크롤링 트리거", description = "Redis crawl:trigger 채널에 PUBLISH하고 jobId를 반환.")
     public ResponseEntity<CrawlTriggerResponse> trigger(HttpServletRequest request) {
 
-        String raw = request.getHeader("X-Correlation-ID");
-        String correlationId = (raw != null && !raw.isBlank()) ? raw : UUID.randomUUID().toString();
+        String correlationId = CorrelationIdUtil.resolve(request);
 
         String jobId = crawlTriggerService.trigger(correlationId);
 

@@ -1,5 +1,6 @@
 package com.tracker.api.exception;
 
+import com.tracker.api.util.CorrelationIdUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpHeaders;
@@ -12,7 +13,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
-import java.util.UUID;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -124,7 +124,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         var responseHeaders = new HttpHeaders();
         responseHeaders.putAll(headers);
-        responseHeaders.set("X-Correlation-ID", correlationIdFrom(request));
+        responseHeaders.set("X-Correlation-ID", CorrelationIdUtil.resolve(request));
 
         return super.handleExceptionInternal(ex, responseBody, responseHeaders, statusCode, request);
     }
@@ -146,23 +146,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         return ResponseEntity
                 .status(problemDetail.getStatus())
-                .header("X-Correlation-ID", correlationIdFrom(request))
+                .header("X-Correlation-ID", CorrelationIdUtil.resolve(request))
                 .body(problemDetail);
-    }
-
-    private String correlationIdFrom(HttpServletRequest request) {
-        String correlationId = request.getHeader("X-Correlation-ID");
-        if (correlationId == null || correlationId.isBlank()) {
-            return UUID.randomUUID().toString();
-        }
-        return correlationId;
-    }
-
-    private String correlationIdFrom(WebRequest request) {
-        String correlationId = request.getHeader("X-Correlation-ID");
-        if (correlationId == null || correlationId.isBlank()) {
-            return UUID.randomUUID().toString();
-        }
-        return correlationId;
     }
 }

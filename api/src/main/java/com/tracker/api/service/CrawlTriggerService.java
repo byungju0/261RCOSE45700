@@ -6,6 +6,7 @@ import com.tracker.api.dto.CrawlJobStatusResponse;
 import com.tracker.api.dto.CrawlPipelineStatsResponse;
 import com.tracker.api.exception.CrawlJobNotFoundException;
 import com.tracker.api.exception.CrawlTriggerUnavailableException;
+import com.tracker.api.util.RedisFieldExtractor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -73,65 +74,53 @@ public class CrawlTriggerService {
         }
 
         return new CrawlJobStatusResponse(
-                value(raw, "jobId"),
-                value(raw, "status"),
-                intValue(raw, "totalSites"),
-                intValue(raw, "completedSites"),
-                intValue(raw, "percent"),
-                value(raw, "currentSite"),
-                value(raw, "message"),
+                RedisFieldExtractor.str(raw, "jobId"),
+                RedisFieldExtractor.str(raw, "status"),
+                RedisFieldExtractor.intValue(raw, "totalSites"),
+                RedisFieldExtractor.intValue(raw, "completedSites"),
+                RedisFieldExtractor.intValue(raw, "percent"),
+                RedisFieldExtractor.str(raw, "currentSite"),
+                RedisFieldExtractor.str(raw, "message"),
                 failedSites(raw),
-                value(raw, "requestedAt"),
-                value(raw, "startedAt"),
-                value(raw, "updatedAt"),
-                value(raw, "finishedAt")
+                RedisFieldExtractor.str(raw, "requestedAt"),
+                RedisFieldExtractor.str(raw, "startedAt"),
+                RedisFieldExtractor.str(raw, "updatedAt"),
+                RedisFieldExtractor.str(raw, "finishedAt")
         );
     }
 
     public CrawlPipelineStatsResponse getLatestPipelineStats() {
         String json = stringRedisTemplate.opsForValue().get(CRAWL_STATS_LATEST_KEY);
         if (json == null || json.isBlank()) {
-            return new CrawlPipelineStatsResponse(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+            return CrawlPipelineStatsResponse.empty();
         }
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = objectMapper.readValue(json, Map.class);
             return new CrawlPipelineStatsResponse(
-                    intFrom(data, "listingBoards"),
-                    intFrom(data, "listingDiscoveredTotal"),
-                    intFrom(data, "listingUrlsSelected"),
-                    intFrom(data, "listingKeywordMatched"),
-                    intFrom(data, "listingKeywordUnmatched"),
-                    intFrom(data, "selectedP0"),
-                    intFrom(data, "selectedP1"),
-                    intFrom(data, "selectedP2"),
-                    intFrom(data, "selectedP3"),
-                    intFrom(data, "attempted"),
-                    intFrom(data, "enqueued"),
-                    intFrom(data, "skippedSeenUrl"),
-                    intFrom(data, "skippedDedup"),
-                    intFrom(data, "skippedEmpty"),
-                    intFrom(data, "skippedSticky"),
-                    intFrom(data, "skippedBlocked"),
-                    intFrom(data, "skippedUnknown"),
-                    intFrom(data, "failed"),
-                    strFrom(data, "recordedAt")
+                    RedisFieldExtractor.intValue(data, "listingBoards"),
+                    RedisFieldExtractor.intValue(data, "listingDiscoveredTotal"),
+                    RedisFieldExtractor.intValue(data, "listingUrlsSelected"),
+                    RedisFieldExtractor.intValue(data, "listingKeywordMatched"),
+                    RedisFieldExtractor.intValue(data, "listingKeywordUnmatched"),
+                    RedisFieldExtractor.intValue(data, "selectedP0"),
+                    RedisFieldExtractor.intValue(data, "selectedP1"),
+                    RedisFieldExtractor.intValue(data, "selectedP2"),
+                    RedisFieldExtractor.intValue(data, "selectedP3"),
+                    RedisFieldExtractor.intValue(data, "attempted"),
+                    RedisFieldExtractor.intValue(data, "enqueued"),
+                    RedisFieldExtractor.intValue(data, "skippedSeenUrl"),
+                    RedisFieldExtractor.intValue(data, "skippedDedup"),
+                    RedisFieldExtractor.intValue(data, "skippedEmpty"),
+                    RedisFieldExtractor.intValue(data, "skippedSticky"),
+                    RedisFieldExtractor.intValue(data, "skippedBlocked"),
+                    RedisFieldExtractor.intValue(data, "skippedUnknown"),
+                    RedisFieldExtractor.intValue(data, "failed"),
+                    RedisFieldExtractor.str(data, "recordedAt")
             );
         } catch (JsonProcessingException e) {
-            return new CrawlPipelineStatsResponse(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+            return CrawlPipelineStatsResponse.empty();
         }
-    }
-
-    private int intFrom(Map<String, Object> data, String key) {
-        Object v = data.get(key);
-        if (v == null) return 0;
-        if (v instanceof Number n) return n.intValue();
-        try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return 0; }
-    }
-
-    private String strFrom(Map<String, Object> data, String key) {
-        Object v = data.get(key);
-        return v == null ? "" : v.toString();
     }
 
     private String triggerPayload(String jobId, String correlationId, String requestedAt) {
@@ -147,28 +136,13 @@ public class CrawlTriggerService {
     }
 
     private List<String> failedSites(Map<Object, Object> raw) {
-        String json = value(raw, "failedSites");
+        String json = RedisFieldExtractor.str(raw, "failedSites");
         if (json.isBlank()) return List.of();
         try {
             return objectMapper.readerForListOf(String.class).readValue(json);
         } catch (JsonProcessingException e) {
             return List.of();
         }
-    }
-
-    private int intValue(Map<Object, Object> raw, String field) {
-        String value = value(raw, field);
-        if (value.isBlank()) return 0;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private String value(Map<Object, Object> raw, String field) {
-        Object value = raw.get(field);
-        return value == null ? "" : value.toString();
     }
 
     private String key(String jobId) {

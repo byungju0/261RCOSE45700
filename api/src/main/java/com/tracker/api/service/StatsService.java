@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tracker.api.dto.StatsResponse;
 import com.tracker.api.exception.InvalidFilterParamException;
 import com.tracker.api.repository.StatsRepository;
+import com.tracker.api.util.RedisFieldExtractor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -173,16 +174,16 @@ public class StatsService {
                 String json = mqRedisTemplate.opsForValue().get(key);
                 if (json == null || json.isBlank()) continue;
                 Map<String, Object> raw = objectMapper.readValue(json, new TypeReference<>() {});
-                String siteName = strFrom(raw, "siteName");
+                String siteName = RedisFieldExtractor.str(raw, "siteName");
                 if (siteName.isBlank()) {
                     siteName = key.substring(CRAWL_SOURCE_RUN_PREFIX.length());
                 }
                 runs.put(siteName, new SourceRunSummary(
-                        toInstant(strFrom(raw, "lastCheckedAt")),
-                        longFrom(raw, "fetched"),
-                        longFrom(raw, "queued"),
-                        longFrom(raw, "validatorSkipped"),
-                        longFrom(raw, "failed")));
+                        toInstant(RedisFieldExtractor.str(raw, "lastCheckedAt")),
+                        RedisFieldExtractor.longValue(raw, "fetched"),
+                        RedisFieldExtractor.longValue(raw, "queued"),
+                        RedisFieldExtractor.longValue(raw, "validatorSkipped"),
+                        RedisFieldExtractor.longValue(raw, "failed")));
             }
         } catch (Exception e) {
             log.warn("Redis source run read failed: {}", e.getMessage());
@@ -220,22 +221,6 @@ public class StatsService {
             return days;
         }
         throw new InvalidFilterParamException("days는 1~365 사이 숫자만 허용됩니다.");
-    }
-
-    private long longFrom(Map<String, Object> data, String key) {
-        Object v = data.get(key);
-        if (v == null) return 0;
-        if (v instanceof Number n) return n.longValue();
-        try {
-            return Long.parseLong(v.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private String strFrom(Map<String, Object> data, String key) {
-        Object v = data.get(key);
-        return v == null ? "" : v.toString();
     }
 
     private record TimeRange(Instant from, Instant to) {}
