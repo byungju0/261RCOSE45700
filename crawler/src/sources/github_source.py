@@ -216,7 +216,11 @@ class GitHubSource:
                 resp = await client.get(
                     "/search/repositories",
                     params={
-                        "q": f"{query} in:name,description,readme archived:false",
+                        # 따옴표로 정확한 문구 매칭 — 따옴표 없으면 GitHub가 단어를 독립적으로
+                        # AND 처리해 무관한 단어가 README 어디든 우연히 같이 있으면 매칭된다
+                        # (예: "lineage macro" → "Original plugin lineage"(계보) + "macros"(영양소)
+                        # 가 합쳐져 마인크래프트 플러그인이 후보로 잘못 들어온 사례).
+                        "q": f'"{query}" in:name,description,readme archived:false',
                         "sort": "updated",
                         "order": "desc",
                         "per_page": self._per_query,
