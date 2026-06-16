@@ -1377,13 +1377,18 @@ class CrawlScheduler:
                 if job_id:
                     self._progress_store.mark_succeeded(job_id)
                 trigger = "수동" if job_id else "스케줄"
+                duplicate = stats.skipped_seen_url + stats.skipped_dedup
+                skipped = stats.skipped_empty + stats.skipped_sticky + stats.skipped_blocked + stats.skipped_unknown
+                total_discovered = stats.listing_discovered_total + stats.github_discovered
+                total_selected = stats.listing_urls_selected + stats.github_selected
+                total_enqueued = stats.enqueued + stats.github_enqueued
                 activity = (
                     "CRAWL_COMPLETED",
-                    f"{trigger} 크롤링 완료 — 선택 {stats.listing_urls_selected}건"
-                    f" / GitHub 큐 {stats.github_enqueued}건"
-                    f" / URL중복 {stats.skipped_seen_url}건"
-                    f" / 본문 fetch {stats.attempted}건"
-                    f" / 큐 {stats.enqueued}건",
+                    f"{trigger} 크롤링 완료: 게시판 {stats.listing_boards}개 + GitHub 검색에서 총 {total_discovered}건 발견"
+                    f" → {total_selected}건 선택"
+                    f" → 본문 확인 {stats.attempted}건 시도 → 총 {total_enqueued}건 AI 분석 대기열에 추가"
+                    f" (사이트 {stats.enqueued}건, GitHub {stats.github_enqueued}건)"
+                    f" (중복 제외 {duplicate}건, 기타 제외 {skipped}건, 실패 {stats.failed}건)",
                 )
             except Exception as exc:
                 if job_id:
