@@ -95,3 +95,30 @@ def test_extract_links_strips_cjk_trailing_comma() -> None:
     # URL 뒤에 한중일 쉼표(，)가 있고 이후 공백으로 분리되면 쉼표를 제거.
     links = extract_links("링크 https://evil.example/x， 다음 텍스트")
     assert links == ["https://evil.example/x"]
+
+
+def test_normalize_excludes_current_post_url() -> None:
+    post_url = "https://www.inven.co.kr/board/lineageclassic/6482/16277"
+    result = normalize(
+        f"본문 [주소복사](javascript:void\\(0\\);) <{post_url}> "
+        "외부 https://evil.example/link",
+        exclude_links=[post_url],
+    )
+    assert result.links == ["https://evil.example/link"]
+
+
+def test_extract_links_excludes_trailing_slash_variant() -> None:
+    links = extract_links(
+        "자기 링크 https://example.com/post/1/ 외부 https://evil.example/x",
+        exclude_urls=["https://example.com/post/1"],
+    )
+    assert links == ["https://evil.example/x"]
+
+
+def test_extract_links_excludes_query_fragment_and_default_port_variants() -> None:
+    links = extract_links(
+        "자기 링크 https://EXAMPLE.com:443/post/1?utm_source=x#reply "
+        "외부 https://evil.example/x",
+        exclude_urls=["https://example.com/post/1"],
+    )
+    assert links == ["https://evil.example/x"]

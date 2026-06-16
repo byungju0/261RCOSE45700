@@ -30,6 +30,13 @@ def test_system_prompt_includes_base_type_and_domain_guide() -> None:
     assert "공용 도메인 가이드" in prompt       # 공용 도메인 가이드
 
 
+def test_system_prompt_warns_private_server_lament_is_not_violation() -> None:
+    prompt = build_system_prompt()
+    assert "나중에 프리섭이나 기웃거려 볼까" in prompt
+    assert "서버 추천/홍보/접속 정보가 없으면 기타" in prompt
+    assert "한탄·회상·막연한 이용 의향" in prompt
+
+
 def test_system_prompt_is_site_independent() -> None:
     # source_id가 달라도 동일 프롬프트 — 사이트 종속 제거 검증 (FR12-C 라우팅 제거).
     assert build_system_prompt("bahamut_lineage") == build_system_prompt("totally_unknown_site")

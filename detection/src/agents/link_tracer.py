@@ -52,8 +52,12 @@ _DISTRIBUTION_KEYWORDS = (
     "hack", "cheat", "핵", "치트", "macro", "매크로", "bot", "봇",
 )
 _TRADE_KEYWORDS = (
-    "가격", "원", "代儲", "代充", "面交", "蝦皮", "충전", "현금",
+    "가격", "판매", "구매", "문의", "代儲", "代充", "面交", "蝦皮", "충전", "현금",
     "price", "paypal", "kakao", "line id", "微信", "wechat", "discord",
+)
+_TRADE_PATTERNS = (
+    re.compile(r"\b\d{1,3}(?:,\d{3})+\s*원\b"),
+    re.compile(r"\b\d+\s*(?:원|만원|천원)\b"),
 )
 
 
@@ -71,7 +75,10 @@ def _detect_indicators(title: str, body: str) -> tuple[bool, list[str]]:
     haystack = f"{title}\n{body}".lower()
     indicators: list[str] = []
     has_dist = any(kw.lower() in haystack for kw in _DISTRIBUTION_KEYWORDS)
-    has_trade = any(kw.lower() in haystack for kw in _TRADE_KEYWORDS)
+    has_trade = (
+        any(kw.lower() in haystack for kw in _TRADE_KEYWORDS)
+        or any(pattern.search(haystack) for pattern in _TRADE_PATTERNS)
+    )
     if has_dist:
         indicators.append("배포 관련 표현 발견")
     if has_trade:

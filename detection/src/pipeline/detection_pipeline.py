@@ -140,6 +140,7 @@ class DetectionPipeline:
                 event.raw_text,
                 correlation_id=event.correlation_id,
                 language=event.language,
+                post_url=event.post_url,
             ),
             message=message,
             post_id=event.post_id,

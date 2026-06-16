@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from urllib.parse import urlsplit, urlunsplit
 
 import regex as _regex
 
@@ -80,34 +81,56 @@ def _collapse_repeats(text: str) -> str:
     return _REPEAT_RE.sub(r"\1\1", text)
 
 
-def extract_links(text: str) -> list[str]:
+def _canonical_url(url: str) -> str:
+    try:
+        parsed = urlsplit(url.strip())
+    except ValueError:
+        return url.strip().rstrip("/")
+    if not parsed.scheme or not parsed.netloc:
+        return url.strip().rstrip("/")
+
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+    default_port = (
+        (parsed.scheme.lower() == "http" and port == 80)
+        or (parsed.scheme.lower() == "https" and port == 443)
+    )
+    netloc = hostname if port is None or default_port else f"{hostname}:{port}"
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, "", ""))
+
+
+def extract_links(text: str, *, exclude_urls: list[str] | None = None) -> list[str]:
     """markdown + bare URL 추출. 등장 순서 보존 + 중복 제거.
 
     markdown 링크의 URL을 먼저 잡고, bare URL을 보탠다. 끝에 붙은 마침표·괄호류는 떼어
     실제 URL만 남긴다(문장 끝 URL 대응).
     """
+    excluded = {_canonical_url(url) for url in (exclude_urls or []) if url}
     seen: set[str] = set()
     ordered: list[str] = []
     for match in _MD_LINK_RE.finditer(text):
         url = match.group(1).rstrip(_TRAILING_PUNCT)
-        if url and url not in seen:
+        canonical = _canonical_url(url)
+        if url and canonical not in excluded and url not in seen:
             seen.add(url)
             ordered.append(url)
     # bare URL — markdown으로 이미 잡힌 것은 seen으로 중복 제거.
     md_stripped = _MD_LINK_RE.sub(" ", text)
     for match in _BARE_URL_RE.finditer(md_stripped):
         url = match.group(0).rstrip(_TRAILING_PUNCT)
-        if url and url not in seen:
+        canonical = _canonical_url(url)
+        if url and canonical not in excluded and url not in seen:
             seen.add(url)
             ordered.append(url)
     return ordered
 
 
-def normalize(text: str) -> NormalizedPost:
+def normalize(text: str, *, exclude_links: list[str] | None = None) -> NormalizedPost:
     """게시글 본문 정규화 + 링크 추출. 빈 입력은 빈 결과(예외 없음)."""
     raw = text or ""
     # 링크는 원문에서 추출 — 정규화(반복 축약 등)가 URL을 훼손하지 않도록.
-    links = extract_links(raw)
+    links = extract_links(raw, exclude_urls=exclude_links)
 
     step = _strip_zero_width(raw)
     step = unicodedata.normalize("NFKC", step)

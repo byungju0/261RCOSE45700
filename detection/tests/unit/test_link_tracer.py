@@ -64,6 +64,30 @@ def test_web_fetch_detects_distribution(redis_client, allow_public_dns) -> None:
     assert ev.indicators
 
 
+def test_korean_won_character_alone_is_not_trade_signal(redis_client, allow_public_dns) -> None:
+    html = (
+        b"<html><head><title>Normal Post</title></head>"
+        b"<body>\xec\x9b\x90\xeb\xac\xb8 \xec\x9b\x90\xed\x99\x94 "
+        b"\xea\xb2\x8c\xec\x9e\x84 \xec\x9d\xb4\xec\x95\xbc\xea\xb8\xb0</body></html>"
+    )
+    tracer = _tracer(redis_client, _html_handler(html))
+    [ev] = tracer.trace(["https://good.example/post"])
+    assert ev.kind == "web"
+    assert ev.is_distribution_site is False
+    assert ev.indicators == []
+
+
+def test_korean_price_pattern_is_trade_signal(redis_client, allow_public_dns) -> None:
+    html = (
+        b"<html><head><title>Sale</title></head>"
+        b"<body>\xed\x8c\x90\xeb\xa7\xa4 \xea\xb0\x80\xea\xb2\xa9 10,000\xec\x9b\x90</body></html>"
+    )
+    tracer = _tracer(redis_client, _html_handler(html))
+    [ev] = tracer.trace(["https://evil.example/sale"])
+    assert ev.is_distribution_site is True
+    assert "거래/연락처 정황 발견" in ev.indicators
+
+
 def test_application_content_type_aborts_as_file_link(redis_client, allow_public_dns) -> None:
     def _binary(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

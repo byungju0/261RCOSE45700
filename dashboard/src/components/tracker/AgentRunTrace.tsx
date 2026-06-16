@@ -102,6 +102,8 @@ const dangerSurface = 'color-mix(in oklch, var(--crit) 14%, var(--bg-elev))';
 const dangerBorder = 'color-mix(in oklch, var(--crit) 45%, var(--border-1))';
 const dangerMuted = 'color-mix(in oklch, var(--crit) 18%, var(--bg-elev))';
 const dangerText = 'color-mix(in oklch, var(--crit) 82%, var(--fg))';
+const linkSurface = 'color-mix(in oklch, var(--accent) 12%, var(--bg-elev))';
+const linkBorder = 'color-mix(in oklch, var(--accent) 45%, var(--border-1))';
 
 function KindBadge({ kind }: { kind: LinkEvidence['kind'] }) {
   const label: Record<string, string> = {
@@ -192,9 +194,22 @@ function StageSummary({ data }: { data: AgentRun[] }) {
               <p className="text-sm font-semibold" style={{ color: dangerText }}>
                 가장 중요한 근거: 외부 링크 {riskyLinks.length}개에서 배포·판매 정황을 찾았습니다.
               </p>
-              <p className="mt-1 break-all font-mono text-xs" style={{ color: dangerText }}>
-                {riskyLinks[0].page_title ?? riskyLinks[0].url}
-              </p>
+              {riskyLinks[0].page_title && (
+                <p className="mt-1 text-sm" style={{ color: dangerText }}>
+                  {riskyLinks[0].page_title}
+                </p>
+              )}
+              <a
+                href={riskyLinks[0].url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 break-all font-mono text-xs no-underline hover:underline"
+                style={{ borderColor: dangerBorder, background: 'var(--bg-elev)', color: dangerText }}
+              >
+                <Link2 className="size-3 shrink-0" aria-hidden />
+                {riskyLinks[0].url}
+                <ExternalLink className="size-3 shrink-0" aria-hidden />
+              </a>
             </div>
           </div>
         </div>
@@ -218,7 +233,7 @@ function LinkEvidenceCard({ ev }: { ev: LinkEvidence }) {
         borderColor: ev.is_distribution_site ? dangerBorder : 'var(--border-1)',
       }}
     >
-      <div className="flex flex-wrap items-start gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <KindBadge kind={ev.kind} />
         {ev.is_distribution_site && (
           <span
@@ -228,21 +243,33 @@ function LinkEvidenceCard({ ev }: { ev: LinkEvidence }) {
             위험 근거
           </span>
         )}
-        <span className="text-muted-foreground min-w-0 flex-1 break-all font-mono">
-          {ev.url}
-        </span>
       </div>
+
+      {ev.page_title && (
+        <p className="text-foreground mt-2.5 text-sm font-semibold leading-snug">
+          {ev.page_title}
+        </p>
+      )}
+      <a
+        href={ev.url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 break-all font-mono text-[11px] no-underline hover:underline"
+        style={{ borderColor: linkBorder, background: linkSurface, color: 'var(--accent)' }}
+      >
+        <Link2 className="size-3 shrink-0" aria-hidden />
+        {ev.url}
+        <ExternalLink className="size-3 shrink-0" aria-hidden />
+      </a>
+
       <p
-        className={`mt-2 text-sm font-medium ${ev.is_distribution_site ? '' : 'text-foreground'}`}
+        className={`mt-2.5 text-sm font-medium ${ev.is_distribution_site ? '' : 'text-foreground'}`}
         style={ev.is_distribution_site ? { color: dangerText } : undefined}
       >
         {ev.is_distribution_site
           ? '배포·판매 정황이 있는 링크입니다'
           : '직접적인 배포 정황은 확인되지 않았습니다'}
       </p>
-      {ev.page_title && (
-        <p className="text-foreground mt-1.5">{ev.page_title}</p>
-      )}
       {ev.indicators.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {ev.indicators.map((ind) => (
@@ -256,7 +283,10 @@ function LinkEvidenceCard({ ev }: { ev: LinkEvidence }) {
           ))}
         </div>
       )}
-      <p className="text-muted-foreground mt-2 font-mono">
+      <p
+        className="text-muted-foreground mt-2.5 border-t pt-2 font-mono"
+        style={{ borderColor: 'var(--border-1)' }}
+      >
         확인 상태: {fetchStatusLabel(ev.fetch_status)}
       </p>
     </div>

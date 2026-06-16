@@ -61,12 +61,13 @@ class AgentOrchestrator:
         raw_text: str,
         correlation_id: str = "",
         language: str | None = None,
+        post_url: str | None = None,
     ) -> tuple[LLMResponse, list[AgentRunTrace]]:
         traces: list[AgentRunTrace] = []
 
         # S0 normalize ($0, LLM 없음).
         t0 = time.perf_counter()
-        normalized = normalize(raw_text)
+        normalized = normalize(raw_text, exclude_links=[post_url] if post_url else None)
         traces.append(AgentRunTrace(
             stage="normalize", model=None, latency_ms=_now_ms(t0),
             output={"links": normalized.links, "removed_char_count": normalized.removed_char_count},
