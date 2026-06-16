@@ -113,7 +113,7 @@ jobs:
   deploy:
     name: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     # 학생 collaborator 권한이 GH Environment 만들기 차단 → Repository secrets로 우회.
     # environment 보호 게이트(required reviewers 등) 잃지만 학생 프로젝트 규모에서 수용.
     needs: [build-push]
@@ -345,8 +345,9 @@ jobs:
             done
 
             if [ "$ALL_OK" = "1" ]; then
-              # actuator readiness는 ping만 — DB+Redis+JPA 풀스택은 /api/stats가 처음 친다.
-              if ! curl -fsS -m 5 http://127.0.0.1:8080/api/stats >/dev/null; then
+              # api:8080은 보안상 호스트에 publish하지 않는다. tracker-api 컨테이너
+              # 내부에서 /api/stats를 호출해 DB+Redis+JPA 풀스택 smoke를 검증한다.
+              if ! "$DOCKER" exec tracker-api curl -fsS -m 5 http://localhost:8080/api/stats >/dev/null; then
                 $ECHO "::error::Smoke test failed — /api/stats not 200 within 5s after all healthy"
                 ALL_OK=0
               fi
