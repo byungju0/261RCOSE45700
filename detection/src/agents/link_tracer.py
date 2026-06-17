@@ -61,6 +61,7 @@ _TRADE_PATTERNS = (
     re.compile(r"\b\d+\s*(?:원|만원|천원)\b"),
 )
 
+
 def _cache_key(url: str) -> str:
     return REDIS_KEY_LINKTRACE_PREFIX + hashlib.sha256(url.encode("utf-8")).hexdigest()
 
